@@ -41,5 +41,11 @@
   ],
   "interline-translate.knownPopularWordCount": 6000,
   "iconify.annotations": true,
-  "iconify.inplace": true
+  "iconify.inplace": true,
+  "cSpell.words": [
+    "brpop",
+    "brpoplpush",
+    "hget",
+    "lrem"
+  ]
 }
