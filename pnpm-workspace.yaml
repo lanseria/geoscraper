@@ -1,5 +1,12 @@
 packages: []
+
 catalogs:
+  backend:
+    '@types/pg': ^8.15.4
+    bullmq: ^5.56.4
+    drizzle-kit: ^0.31.4
+    drizzle-orm: ^0.44.3
+    pg: ^8.16.3
   build:
     '@nuxt/devtools': ^2.6.2
     '@nuxt/eslint': ^1.4.1
@@ -27,6 +34,7 @@ catalogs:
   icons:
     '@iconify-json/carbon': ^1.2.10
     '@iconify-json/twemoji': ^1.2.2
+
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - esbuild

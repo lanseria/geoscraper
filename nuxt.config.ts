@@ -1,4 +1,3 @@
-import { pwa } from './app/config/pwa'
 import { appDescription } from './app/constants/index'
 
 export default defineNuxtConfig({
@@ -7,17 +6,21 @@ export default defineNuxtConfig({
     '@unocss/nuxt',
     '@pinia/nuxt',
     '@nuxtjs/color-mode',
-    '@vite-pwa/nuxt',
     '@nuxt/eslint',
   ],
 
   devtools: {
     enabled: true,
   },
-
+  runtimeConfig: {
+    dbUrl: '', 
+    redis: {
+      host: '',
+      password: '',
+    },
+  },
   app: {
     head: {
-      viewport: 'width=device-width,initial-scale=1',
       link: [
         { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
         { rel: 'icon', type: 'image/svg+xml', href: '/nuxt.svg' },
@@ -57,11 +60,6 @@ export default defineNuxtConfig({
         target: 'esnext',
       },
     },
-    prerender: {
-      crawlLinks: false,
-      routes: ['/'],
-      ignore: ['/hi'],
-    },
   },
 
   eslint: {
@@ -73,5 +71,4 @@ export default defineNuxtConfig({
     },
   },
 
-  pwa,
 })

@@ -1,0 +1,35 @@
+services:
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: geoscraper_nuxt_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app # 源码挂载，实现热重载
+    env_file:
+      - .env
+    networks:
+      - shared_app_net
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: geoscraper_python_worker
+    restart: unless-stopped
+    volumes:
+      - ./worker:/app # 源码挂载
+      - ~/share/data:/data
+    env_file:
+      - .env
+    networks:
+      - shared_app_net
+
+networks:
+  shared_app_net:
+    external: true
+    name: shared-db-network
