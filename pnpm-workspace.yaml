@@ -29,6 +29,7 @@ catalogs:
     vue-tsc: ^3.0.0
   frontend:
     '@vueuse/core': ^13.4.0
+    maplibre-gl: ^5.6.1
     pinia: ^3.0.3
     vue: ^3.5.17
   icons:

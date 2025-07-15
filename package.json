@@ -36,6 +36,7 @@
     "drizzle-orm": "catalog:backend",
     "eslint": "catalog:dev",
     "eslint-plugin-format": "catalog:dev",
+    "maplibre-gl": "catalog:frontend",
     "nuxt": "catalog:build",
     "pg": "catalog:backend",
     "pinia": "catalog:frontend",

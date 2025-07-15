@@ -12,7 +12,7 @@ const isFormVisible = ref(false)
       <h1 text-2xl font-bold>
         任务仪表盘
       </h1>
-      <button class="btn flex items-center" @click="isFormVisible = true">
+      <button class="btn-primary flex items-center" @click="isFormVisible = true">
         <div i-carbon-add mr-2 />
         创建新任务
       </button>
@@ -49,8 +49,9 @@ const isFormVisible = ref(false)
     </div>
 
     <!-- 创建任务的弹窗/模态框 (简单实现) -->
-    <div v-if="isFormVisible" bg="black/50" flex items-center inset-0 justify-center fixed @click.self="isFormVisible = false">
-      <div class="rounded-lg bg-white max-w-lg w-full shadow-xl dark:bg-gray-900">
+    <div v-if="isFormVisible" bg="black/50" flex items-center inset-0 justify-center fixed z-50 @click.self="isFormVisible = false">
+      <!-- 将 max-w-2xl 修改为 max-w-4xl，让弹窗更宽 -->
+      <div class="rounded-lg bg-white max-h-[90vh] max-w-4xl w-full shadow-xl overflow-y-auto dark:bg-gray-900">
         <TaskForm @close="isFormVisible = false" />
       </div>
     </div>

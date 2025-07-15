@@ -12,13 +12,6 @@ export default defineNuxtConfig({
   devtools: {
     enabled: true,
   },
-  runtimeConfig: {
-    dbUrl: '', 
-    redis: {
-      host: '',
-      password: '',
-    },
-  },
   app: {
     head: {
       link: [
@@ -38,6 +31,16 @@ export default defineNuxtConfig({
 
   colorMode: {
     classSuffix: '',
+  },
+  runtimeConfig: {
+    dbUrl: '',
+    redis: {
+      host: '',
+      password: '',
+    },
+    public: {
+      maptilerKey: '', // Nuxt 会自动从 NUXT_PUBLIC_MAPTILER_KEY 填充
+    },
   },
 
   future: {
