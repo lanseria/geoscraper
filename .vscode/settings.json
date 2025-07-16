@@ -46,6 +46,7 @@
     "brpop",
     "brpoplpush",
     "bullmq",
+    "dotenv",
     "hget",
     "lrem"
   ]

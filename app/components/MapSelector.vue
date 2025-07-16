@@ -27,7 +27,7 @@ onMounted(() => {
   const initialState = {
     lng: props.modelValue.sw.lng,
     lat: props.modelValue.sw.lat,
-    zoom: 9,
+    zoom: 7,
   }
 
   map.value = new Map({

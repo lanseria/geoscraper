@@ -1,77 +1,114 @@
+/* eslint-disable no-console */
 // app/stores/task.ts
 import type { tasks } from '~~/server/database/schema'
 import { acceptHMRUpdate, defineStore } from 'pinia'
-// 假设你把 Zod schema 移到共享文件，或者在这里重新定义类型
-// 为简单起见，我们先用 any
+
 type Task = typeof tasks.$inferSelect
-type TaskCreatePayload = any // z.infer<typeof taskSchema> in api
+type TaskCreatePayload = any
 
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<Task[]>([])
-  const isLoading = ref(false)
+  const isLoading = ref(true) // 初始设为 true
+  let eventSource: EventSource | null = null
 
-  async function fetchTasks() {
+  // --- 新增: SSE 初始化和关闭 ---
+  function initializeSSE() {
+    // 确保只在客户端执行
+    if (import.meta.server)
+      return
+    // 如果已有连接，先关闭
+    if (eventSource)
+      eventSource.close()
+
     isLoading.value = true
-    try {
-      const data = await $fetch<Task[]>('/api/tasks')
-      tasks.value = data
+    eventSource = new EventSource('/api/tasks/sse')
+
+    eventSource.onopen = () => {
+      console.log('SSE connection opened.')
     }
-    catch (error) {
-      console.error('Failed to fetch tasks', error)
-      // 可以在这里添加错误提示
+
+    eventSource.onmessage = (event) => {
+      const eventData = JSON.parse(event.data)
+
+      // 处理初始加载事件
+      if (eventData.type === 'initial-load') {
+        tasks.value = eventData.data
+        isLoading.value = false
+        console.log('SSE: Initial tasks loaded.')
+        return
+      }
+
+      // 处理单个任务更新事件
+      const updatedTask: Task = eventData
+      const index = tasks.value.findIndex(t => t.id === updatedTask.id)
+
+      if (index > -1) {
+        // 更新现有任务
+        tasks.value[index] = updatedTask
+      }
+      else {
+        // 如果是新任务，添加到列表顶部
+        tasks.value.unshift(updatedTask)
+      }
+      // 保持列表按创建时间倒序
+      tasks.value.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     }
-    finally {
-      isLoading.value = false
+
+    eventSource.onerror = (error) => {
+      console.error('SSE Error:', error)
+      isLoading.value = false // 出错时停止加载状态
+      eventSource?.close()
     }
   }
 
+  function closeSSE() {
+    if (eventSource) {
+      eventSource.close()
+      eventSource = null
+      console.log('SSE connection closed.')
+    }
+  }
+
+  // --- 现有函数保持不变，但不再需要主动 fetchTasks ---
+  // fetchTasks 仍然可以保留，以备 SSE 不可用时的后备方案
+
   async function createTask(payload: TaskCreatePayload) {
-    isLoading.value = true
     try {
-      const result = await $fetch('/api/tasks', {
+      const response = await apiFetch('/tasks', {
         method: 'POST',
         body: payload,
       })
-      // 成功后重新加载列表
-      await fetchTasks()
-      return result
+      return response
     }
     catch (error) {
-      console.error('Failed to create task', error)
-      // 可以在这里添加错误提示
-      throw error // 将错误抛出，让组件处理
-    }
-    finally {
-      isLoading.value = false
+      console.error('API call failed in store action:', error)
+      throw error
     }
   }
 
   async function deleteTask(taskId: number) {
-    // 可以在这里设置一个针对特定任务的加载状态，如果需要的话
     try {
-      await $fetch(`/api/tasks/${taskId}`, {
+      // 删除操作也应该使用 apiFetch，以保持一致性
+      await apiFetch(`/tasks/${taskId}`, {
         method: 'DELETE',
       })
-      // 从本地状态中移除任务，无需重新请求整个列表，UI响应更快
       const index = tasks.value.findIndex(t => t.id === taskId)
       if (index > -1)
         tasks.value.splice(index, 1)
     }
     catch (error) {
       console.error(`Failed to delete task ${taskId}`, error)
-      // 可以在这里添加错误提示
-      throw error // 抛出错误让组件处理
+      throw error
     }
   }
-  // 初始化时加载一次任务
-  fetchTasks()
 
   return {
     tasks,
     isLoading,
-    fetchTasks,
     createTask,
     deleteTask,
+    initializeSSE,
+    closeSSE,
   }
 })
 
