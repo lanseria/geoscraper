@@ -7,8 +7,6 @@ services:
     restart: unless-stopped
     ports:
       - "20001:3000"
-    volumes:
-      - .:/app # 源码挂载，实现热重载
     env_file:
       - .env
     networks:
@@ -21,7 +19,6 @@ services:
     container_name: geoscraper_python_worker
     restart: unless-stopped
     volumes:
-      - ./worker:/app # 源码挂载
       - ~/share/data:/data
     env_file:
       - .env
