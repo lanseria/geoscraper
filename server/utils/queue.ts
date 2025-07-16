@@ -16,6 +16,7 @@ export function useQueue() {
       connection: {
         host: redisConfig.host,
         password: redisConfig.password,
+        db: config.redis.db,
       },
     })
   }

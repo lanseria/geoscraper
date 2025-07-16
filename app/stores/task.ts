@@ -46,6 +46,23 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  async function deleteTask(taskId: number) {
+    // 可以在这里设置一个针对特定任务的加载状态，如果需要的话
+    try {
+      await $fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+      })
+      // 从本地状态中移除任务，无需重新请求整个列表，UI响应更快
+      const index = tasks.value.findIndex(t => t.id === taskId)
+      if (index > -1)
+        tasks.value.splice(index, 1)
+    }
+    catch (error) {
+      console.error(`Failed to delete task ${taskId}`, error)
+      // 可以在这里添加错误提示
+      throw error // 抛出错误让组件处理
+    }
+  }
   // 初始化时加载一次任务
   fetchTasks()
 
@@ -54,6 +71,7 @@ export const useTaskStore = defineStore('task', () => {
     isLoading,
     fetchTasks,
     createTask,
+    deleteTask,
   }
 })
 

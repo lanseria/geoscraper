@@ -45,6 +45,7 @@
   "cSpell.words": [
     "brpop",
     "brpoplpush",
+    "bullmq",
     "hget",
     "lrem"
   ]

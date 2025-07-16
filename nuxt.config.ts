@@ -37,6 +37,7 @@ export default defineNuxtConfig({
     redis: {
       host: '',
       password: '',
+      db: 3,
     },
     public: {
       maptilerKey: '', // Nuxt 会自动从 NUXT_PUBLIC_MAPTILER_KEY 填充

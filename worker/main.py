@@ -22,11 +22,12 @@ load_dotenv()
 DB_URL = os.getenv('DB_URL')
 REDIS_HOST = os.getenv('REDIS_HOST')
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
+REDIS_DB = int(os.getenv('REDIS_DB', 3)) 
 TASK_QUEUE_NAME = 'tile-scrape-queue'
 STORAGE_ROOT = Path(os.getenv('STORAGE_ROOT', '/data/geoscraper-tiles'))
 
 # Redis 队列键名 (BullMQ 格式)
-WAITING_LIST_KEY = f'bull:{TASK_QUEUE_NAME}:waiting'
+WAIT_LIST_KEY = f'bull:{TASK_QUEUE_NAME}:wait'
 ACTIVE_LIST_KEY = f'bull:{TASK_QUEUE_NAME}:active'
 
 # 地图 URL 模板
@@ -179,31 +180,24 @@ async def process_task(task_id):
 def main():
     """主函数，监听 Redis 队列并分发任务"""
     logging.info("Python Worker is starting...")
-    logging.info(f"Watching Redis queue: '{TASK_QUEUE_NAME}'")
+    logging.info(f"Watching Redis queue: '{TASK_QUEUE_NAME}' on key '{WAIT_LIST_KEY}'") # 日志中也明确打印键名
     STORAGE_ROOT.mkdir(parents=True, exist_ok=True) # 确保根存储目录存在
 
     redis_client = redis.Redis(
         host=REDIS_HOST,
         password=REDIS_PASSWORD,
+        db=REDIS_DB,
         decode_responses=True
     )
 
     while True:
         try:
-            # 使用 BRPOP 进行调试，它返回 (list_name, item)
-            # timeout=0 表示无限期等待
-            packed_job = redis_client.brpop([WAITING_LIST_KEY], timeout=10) 
+            # --- 重点修改：使用新的 WAIT_LIST_KEY ---
+            # 恢复使用更健壮的 BRPOPLPUSH
+            job_id = redis_client.brpoplpush(WAIT_LIST_KEY, ACTIVE_LIST_KEY, timeout=10)
 
-            if packed_job:
-                # packed_job 是一个元组，例如 (b'bull:tile-scrape-queue:waiting', b'1')
-                list_name, job_id = packed_job
-                
-                # --- 从这里开始，逻辑与之前相似 ---
-                logging.info(f"Popped job with ID: {job_id} from list: {list_name}")
-                
-                # 立即将其放入 active 列表，模拟原子操作
-                redis_client.lpush(ACTIVE_LIST_KEY, job_id)
-
+            if job_id:
+                # 剩下的逻辑与之前一致，因为它们依赖的是 job_id，是正确的
                 job_data_str = redis_client.hget(f'bull:{TASK_QUEUE_NAME}:{job_id}', 'data')
                 if job_data_str:
                     job_data = json.loads(job_data_str)
@@ -219,10 +213,11 @@ def main():
                         logging.error(f"Job {job_id} has no taskId field.")
                 else:
                     logging.error(f"Could not retrieve data for job {job_id}")
-                
+
                 # 处理完后，从 active 列表中移除
                 redis_client.lrem(ACTIVE_LIST_KEY, 1, job_id)
-                # 还可以删除作业的哈希数据，这里暂时省略以简化
+                # 同时删除作业数据，保持 Redis 清洁
+                redis_client.delete(f'bull:{TASK_QUEUE_NAME}:{job_id}')
                 
         except redis.exceptions.ConnectionError as e:
             logging.error(f"Redis connection error: {e}. Retrying in 5 seconds...")

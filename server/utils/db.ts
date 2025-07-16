@@ -11,14 +11,14 @@ export function useDb() {
     if (!config.dbUrl)
       throw new Error('DATABASE_URL is not defined in runtime config.')
 
-    const client = new pg.Client({
+    const _client = new pg.Client({
       connectionString: config.dbUrl,
     })
 
     // 注意：在生产环境，建议使用 pg.Pool 以获得更好的性能和连接管理
-    client.connect()
+    _client.connect()
 
-    _db = drizzle(client, { schema, logger: false })
+    _db = drizzle(_client, { schema, logger: false })
   }
   return _db
 }

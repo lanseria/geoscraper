@@ -8,3 +8,4 @@ dist
 .idea/
 public/assets/fonts
 project_context.txt
+data/
