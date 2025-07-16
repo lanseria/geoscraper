@@ -31,7 +31,7 @@ MAP_URL_TEMPLATES = {
     'osm-standard': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     'osm-topo': 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
 }
-# --- 新增配置 ---
+HTTP_PROXY_URL = os.getenv('HTTP_PROXY_URL')
 REDIS_UPDATE_CHANNEL = "task-updates" # 用于发布任务更新的频道
 
 # --- Redis 客户端实例 ---
@@ -164,19 +164,19 @@ async def download_tile(client, tile, url_template, task_id, delay):
 
 async def process_task(task_id):
     """处理单个任务的完整流程 (重点修改)"""
+    # --- 在函数开始时进行延迟导入 ---
+    import httpx
+    
     logging.info(f"Task {task_id}: Starting processing.")
     
     details = get_task_details(task_id)
     if not details:
-        # 如果任务不存在，无法更新，直接记录错误
         logging.error(f"Task {task_id}: Could not find task details in DB.")
         return
 
-    # 计算所有瓦片
     all_tiles = calculate_all_tiles(details['bounds'], details['zoom_levels'])
     total_tiles = len(all_tiles)
 
-    # 1. 更新状态为 'running' 并设置总瓦片数
     update_task_in_db(task_id, status='running', progress=0, total_tiles=total_tiles, completed_tiles=0)
 
     if total_tiles == 0:
@@ -187,17 +187,50 @@ async def process_task(task_id):
     logging.info(f"Task {task_id}: Found {total_tiles} tiles to download.")
     url_template = MAP_URL_TEMPLATES.get(details['map_type'])
     
-    # 并发下载
-    completed_count = 0
-    # 这里的 concurrency 和 download_delay 应该从 details 字典中获取
     concurrency = details.get('concurrency', 5)
     download_delay = details.get('download_delay', 0.2)
-    limits = httpx.Limits(max_connections=concurrency, max_keepalive_connections=concurrency)
     
-    async with httpx.AsyncClient(limits=limits) as client:
+    client_kwargs = {
+        "limits": httpx.Limits(max_connections=concurrency, max_keepalive_connections=concurrency)
+    }
+
+    if HTTP_PROXY_URL:
+        logging.info(f"Attempting to configure proxy: {HTTP_PROXY_URL}")
+        try:
+            # --- 再次进行延迟导入，仅在需要时 ---
+            from httpx import Proxy, AsyncHTTPTransport
+
+            # 默认使用新版 'proxies' API
+            client_kwargs["proxies"] = HTTP_PROXY_URL
+            
+            try:
+                _ = httpx.AsyncClient(**client_kwargs)
+                logging.info("Proxy configured successfully using 'proxies' parameter.")
+            except TypeError as e:
+                if 'unexpected keyword' in str(e):
+                    logging.warning(f"Httpx version is old, falling back to 'mounts' for proxy. Error: {e}")
+                    client_kwargs.pop("proxies", None)
+                    proxy = Proxy(HTTP_PROXY_URL)
+                    transport = AsyncHTTPTransport(proxy=proxy)
+                    client_kwargs["mounts"] = {"http://": transport, "https://": transport}
+                    logging.info("Proxy configured successfully using 'mounts' parameter.")
+                else:
+                    raise e
+        except Exception as e:
+            logging.error(f"FATAL: Failed to configure httpx client with proxy. Aborting task. Error: {e}", exc_info=True)
+            update_task_in_db(task_id, status='failed')
+            return
+            
+    else:
+        logging.info(f"No proxy configured, connecting directly.")
+
+    async with httpx.AsyncClient(**client_kwargs) as client:
         tasks_to_run = [download_tile(client, tile, url_template, task_id, download_delay) for tile in all_tiles]
         last_update_time = time.time()
-        
+
+        # --- 核心修正：初始化 completed_count ---
+        completed_count = 0
+
         for i, future in enumerate(asyncio.as_completed(tasks_to_run)):
             result = await future
             if result in ['downloaded', 'skipped']:
