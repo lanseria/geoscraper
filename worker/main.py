@@ -143,24 +143,45 @@ def calculate_all_tiles(bounds, zoom_levels):
                 tiles_to_download.append({'z': zoom, 'x': x, 'y': y})
     return tiles_to_download
 
-# --- 核心下载逻辑 (保持不变) ---
-async def download_tile(client, tile, url_template, task_id, delay):
+# --- 核心下载逻辑 (添加详细的错误日志) ---
+async def download_tile(client, tile, url_template, task_id, delay, max_retries=3):
+    """
+    下载单个瓦片，带有重试逻辑。
+    """
     z, x, y = tile['z'], tile['x'], tile['y']
     url = url_template.format(z=z, x=x, y=y)
     save_path = STORAGE_ROOT / str(task_id) / str(z) / str(x)
     save_path.mkdir(parents=True, exist_ok=True)
     file_path = save_path / f"{y}.png"
-    if file_path.exists(): return 'skipped'
-    try:
-        await asyncio.sleep(delay)
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        async with client.stream('GET', url, headers=headers, timeout=20) as response:
-            response.raise_for_status()
-            with open(file_path, 'wb') as f:
-                async for chunk in response.aiter_bytes(): f.write(chunk)
-        return 'downloaded'
-    except Exception: return 'failed'
 
+    if file_path.exists():
+        return 'skipped'
+    
+    for attempt in range(max_retries):
+        try:
+            # 只在第一次尝试前应用初始延迟
+            if attempt == 0 and delay > 0:
+                await asyncio.sleep(delay)
+            
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            async with client.stream('GET', url, headers=headers, timeout=20) as response:
+                response.raise_for_status()
+                with open(file_path, 'wb') as f:
+                    async for chunk in response.aiter_bytes():
+                        f.write(chunk)
+                return 'downloaded' # 成功后立即返回
+        except Exception as e:
+            # 打印异常类型和内容，确保能看到原因
+            logging.warning(f"Task {task_id}: Tile {z}/{x}/{y} download failed (Attempt {attempt + 1}/{max_retries}). Reason: {type(e).__name__}: {e}")
+            if attempt < max_retries - 1:
+                # 如果不是最后一次尝试，等待一段时间再重试
+                await asyncio.sleep(2 ** attempt) # 指数退避等待 (1s, 2s)
+            else:
+                # 所有重试都失败了
+                logging.error(f"Task {task_id}: Tile {z}/{x}/{y} failed after {max_retries} attempts.")
+                return 'failed' # 返回失败
+    
+    return 'failed' # 循环正常结束但未成功（理论上不会发生）
 
 async def process_task(task_id):
     """处理单个任务的完整流程 (重点修改)"""
@@ -227,27 +248,37 @@ async def process_task(task_id):
     async with httpx.AsyncClient(**client_kwargs) as client:
         tasks_to_run = [download_tile(client, tile, url_template, task_id, download_delay) for tile in all_tiles]
         last_update_time = time.time()
-
-        # --- 核心修正：初始化 completed_count ---
         completed_count = 0
 
-        for i, future in enumerate(asyncio.as_completed(tasks_to_run)):
-            result = await future
-            if result in ['downloaded', 'skipped']:
-                completed_count += 1
-            
-            # 每秒最多更新一次进度，或在最后一次更新
-            now = time.time()
-            is_last_tile = (i + 1) == total_tiles
-            if (now - last_update_time > 1) or is_last_tile:
-                progress = (completed_count / total_tiles) * 100
-                update_task_in_db(task_id, status='running', progress=progress, completed_tiles=completed_count)
-                last_update_time = now
-    
+        try:
+            for i, future in enumerate(asyncio.as_completed(tasks_to_run)):
+                try:
+                    # 在 await future 这里也加上 try...except
+                    result = await future
+                    if result in ['downloaded', 'skipped']:
+                        completed_count += 1
+                except Exception as e:
+                    # 如果 await future 本身就抛出异常，记录下来
+                    logging.error(f"Task {task_id}: A download task raised an unhandled exception: {e}", exc_info=True)
+                
+                # 更新进度的逻辑保持不变，但现在它在每次迭代后都会执行
+                now = time.time()
+                is_last_tile = (i + 1) == total_tiles
+                if (now - last_update_time > 1) or is_last_tile:
+                    progress = (completed_count / total_tiles) * 100
+                    update_task_in_db(task_id, status='running', progress=progress, completed_tiles=completed_count)
+                    last_update_time = now
+        except Exception as e:
+            # 捕获 asyncio.as_completed 可能抛出的更高级别的错误
+            logging.error(f"Task {task_id}: The main download loop was interrupted. Error: {e}", exc_info=True)
+
     # 任务完成
+    # 这里的 completed_count 现在反映的是在循环中断前已完成的数量
     final_progress = (completed_count / total_tiles) * 100
     logging.info(f"Task {task_id}: Processing finished. {completed_count}/{total_tiles} tiles successful.")
     update_task_in_db(task_id, status='completed', progress=final_progress, completed_tiles=completed_count)
+
+# ... (main 函数不变)
 
 
 def main():
