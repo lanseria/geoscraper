@@ -1,5 +1,4 @@
 services:
-
   frontend:
     build:
       context: .
@@ -7,9 +6,9 @@ services:
     container_name: geoscraper_nuxt_app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "20001:3000"
     volumes:
-      - ./frontend:/app # 源码挂载，实现热重载
+      - .:/app # 源码挂载，实现热重载
     env_file:
       - .env
     networks:
