@@ -12,19 +12,6 @@ services:
     networks:
       - shared_app_net
 
-  worker:
-    build:
-      context: ./worker
-      dockerfile: Dockerfile
-    container_name: geoscraper_python_worker
-    restart: unless-stopped
-    volumes:
-      - ~/share/data:/data
-    env_file:
-      - .env
-    networks:
-      - shared_app_net
-
 networks:
   shared_app_net:
     external: true

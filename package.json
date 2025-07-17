@@ -1,7 +1,7 @@
 {
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@10.12.4",
+  "packageManager": "pnpm@10.13.1",
   "scripts": {
     "build": "nuxt build",
     "dev:pwa": "VITE_PLUGIN_PWA=true nuxt dev",
@@ -13,7 +13,6 @@
     "start:generate": "npx serve .output/public",
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
-    "worker:start": "uv run python worker/main.py",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
@@ -21,7 +20,7 @@
     "@antfu/eslint-config": "catalog:dev",
     "@iconify-json/carbon": "catalog:icons",
     "@iconify-json/twemoji": "catalog:icons",
-    "@nuxt/devtools": "catalog:build",
+    "@nuxt/devtools": "^2.6.2",
     "@nuxt/eslint": "catalog:build",
     "@nuxtjs/color-mode": "catalog:build",
     "@pinia/nuxt": "catalog:build",
@@ -37,11 +36,12 @@
     "eslint": "catalog:dev",
     "eslint-plugin-format": "catalog:dev",
     "maplibre-gl": "catalog:frontend",
-    "nuxt": "catalog:build",
+    "nuxt": "^3.17.7",
     "pg": "catalog:backend",
     "pinia": "catalog:frontend",
-    "redis": "^5.6.0",
+    "redis": "catalog:backend",
     "typescript": "catalog:dev",
+    "undici": "catalog:backend",
     "unocss": "catalog:build",
     "vue": "catalog:frontend",
     "vue-tsc": "catalog:dev"

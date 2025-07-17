@@ -19,22 +19,15 @@ const taskSchema = z.object({
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
-  // 1. 验证输入
   const validation = taskSchema.safeParse(body)
   if (!validation.success) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid input',
-      data: validation.error.errors,
-    })
+    throw createError({ statusCode: 400, data: validation.error.errors })
   }
   const taskData = validation.data
 
   const db = useDb()
-  const queue = useQueue()
 
   try {
-    // 2. 将任务存入数据库
     const [newTask] = await db.insert(tasks).values({
       name: taskData.name,
       description: taskData.description,
@@ -43,31 +36,30 @@ export default defineEventHandler(async (event) => {
       zoomLevels: taskData.zoomLevels,
       concurrency: taskData.concurrency,
       downloadDelay: taskData.downloadDelay,
-      status: 'queued', // 初始状态为排队中
+      status: 'queued',
     }).returning()
 
     if (!newTask) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Failed to create task in database',
-      })
+      throw createError({ statusCode: 500, statusMessage: 'Failed to create task' })
     }
 
-    // 3. 将任务 ID 添加到 BullMQ 队列
-    await queue.add('scrape-task', { taskId: newTask.id })
+    // --- 核心修改 ---
+    // 立即调用任务执行器，但不要 await 它！
+    // 这会让任务在后台运行，而 API 可以立即响应前端。
+    executeDownloadTask(newTask.id).catch((err) => {
+      console.error(`[Task ${newTask.id}] Unhandled error in task runner:`, err)
+      // 可以在这里添加额外的错误处理，比如更新任务状态为 failed
+    })
 
-    // 4. 返回成功创建的任务
+    // API 立即返回，告知前端任务已创建并开始处理
     return {
       statusCode: 201,
-      message: 'Task created and queued successfully.',
+      message: 'Task created and started.',
       task: newTask,
     }
   }
   catch (error) {
     console.error('Error creating task:', error)
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'An internal error occurred while creating the task.',
-    })
+    throw createError({ statusCode: 500, statusMessage: 'Internal error' })
   }
 })
