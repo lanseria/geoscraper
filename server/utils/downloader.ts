@@ -1,6 +1,7 @@
+// server/utils/downloader.ts
 import type { FetchOptions } from 'ofetch'
 import { Buffer } from 'node:buffer'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, stat, writeFile } from 'node:fs/promises' // 引入 stat
 import path from 'node:path'
 import { env } from 'node:process'
 
@@ -14,12 +15,12 @@ const MAP_URL_TEMPLATES: Record<string, string> = {
  * 下载单个瓦片并保存到文件系统。
  * @param tile - 瓦片坐标 { z, x, y }
  * @param task - 包含任务详情的对象
- * @returns 'downloaded' 或 'failed'
+ * @returns 'downloaded', 'failed', 'skipped_404', 或 'skipped_exists'
  */
 export async function downloadTile(
   tile: { z: number, x: number, y: number },
   task: { id: number, mapType: string, downloadDelay: number },
-): Promise<'downloaded' | 'failed' | 'skipped_404'> {
+): Promise<'downloaded' | 'failed' | 'skipped_404' | 'skipped_exists'> { // --- 1. 新增返回类型
   const { z, x, y } = tile
   const { id: taskId, mapType, downloadDelay } = task
 
@@ -30,30 +31,43 @@ export async function downloadTile(
   }
 
   const url = urlTemplate.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
+
+  // --- 2. 核心修改: 改变路径拼接方式 ---
   const storageRoot = env.STORAGE_ROOT || '/data/geoscraper-tiles'
-  const saveDir = path.join(storageRoot, String(taskId), String(z), String(x))
+  const saveDir = path.join(storageRoot, mapType, String(z), String(x)) // 使用 mapType 替代 taskId
   const filePath = path.join(saveDir, `${y}.png`)
 
-  // --- ofetch 配置 ---
+  // --- 3. 核心修改: 检查文件是否已存在且有效 ---
+  try {
+    const fileStats = await stat(filePath)
+    // 如果文件存在且大小大于0，则视为有效，直接跳过
+    if (fileStats.size > 0)
+      return 'skipped_exists'
+    // 如果文件大小为0，则视为破损文件，继续执行下载以覆盖它
+  }
+  catch (error: any) {
+    // 如果错误不是 "文件未找到" (ENOENT)，则记录错误并失败。
+    // 这可以捕获权限问题等其他文件系统错误。
+    if (error.code !== 'ENOENT') {
+      console.error(`[Task ${taskId}] Error checking file ${filePath}:`, error)
+      return 'failed'
+    }
+    // 如果是 ENOENT 错误，说明文件不存在，这是正常情况，继续执行下载。
+  }
+
+  // --- ofetch 配置 (保持不变) ---
   const fetchOptions: FetchOptions<'arrayBuffer'> = {
     responseType: 'arrayBuffer',
     headers: { 'User-Agent': 'Mozilla/5.0' },
-    retry: 3, // 最多重试3次
-    retryDelay: 1000, // 初始重试延迟1秒
+    retry: 3,
+    retryDelay: 1000,
     retryStatusCodes: [408, 429, 500, 502, 503, 504, 522, 524],
-
-    // --- 代理配置 ---
-    // ofetch 会自动读取 http_proxy 和 https_proxy 环境变量，
-    // 但为了明确和可定制，我们从自定义变量读取。
-    // 使用 undici 的 dispatcher 来设置代理
-    // 注意: 这需要 Node.js >= 18 和 undici (Nuxt 默认使用)
     ...(env.HTTP_PROXY_URL && {
       dispatcher: new (await import('undici')).ProxyAgent(env.HTTP_PROXY_URL),
     }),
   }
 
   try {
-    // 如果设置了下载延迟，则在每次请求前等待
     if (downloadDelay > 0)
       await new Promise(resolve => setTimeout(resolve, downloadDelay * 1000))
 
@@ -65,15 +79,9 @@ export async function downloadTile(
     return 'downloaded'
   }
   catch (error: any) {
-    // --- 核心修改：在 catch 块中处理 404 ---
-    // 检查错误是否是 ofetch 的 FetchError 并且状态码是 404
     if (error.statusCode === 404) {
-      // 这是预期的行为（瓦片不存在），静默处理，不打印为错误
-      // console.log(`[Task ${taskId}] Tile ${z}/${x}/${y} does not exist (404), skipping.`)
-      return 'skipped_404' // 返回一个特定状态，表示是因404而跳过
+      return 'skipped_404'
     }
-
-    // 对于其他错误（如 5xx、网络超时等），在重试后仍然失败，打印错误日志
     console.error(`[Task ${taskId}] Tile ${z}/${x}/${y} failed after all retries. Error: ${error.message}`)
     return 'failed'
   }

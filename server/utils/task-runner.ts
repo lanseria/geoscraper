@@ -81,7 +81,8 @@ export async function executeDownloadTask(taskId: number) {
 
   // 进度更新器
   const progressUpdater = async (tileResult: string) => {
-    if (tileResult === 'downloaded' || tileResult === 'skipped_404')
+    // --- 核心修改: 将 'skipped_exists' 也计入完成数量 ---
+    if (tileResult === 'downloaded' || tileResult === 'skipped_404' || tileResult === 'skipped_exists')
       completedCount++
 
     const now = Date.now()
