@@ -8,7 +8,7 @@ services:
     ports:
       - "20001:3000"
     volumes:
-      - "${STORAGE_HOST_PATH:-./geoscraper-tiles-data}:/data/geoscraper-tiles"
+      - "${STORAGE_HOST_PATH:-./geoscraper-tiles-data}:/app/data/geoscraper-tiles"
     env_file:
       - .env
     networks:
