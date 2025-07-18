@@ -8,8 +8,30 @@ type TaskCreatePayload = any
 
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<Task[]>([])
-  const isLoading = ref(true) // 初始设为 true
+  const isLoading = ref(true)
+  const proxyStatus = ref<{ ok: boolean, checkedAt?: string, error?: string } | null>(null)
   let eventSource: EventSource | null = null
+
+  // --- 新增: 获取代理状态的函数 ---
+  async function checkProxyStatus() {
+    try {
+      // 我们不需要返回数据，只需要它成功或失败
+      // apiFetch 在失败时会抛出错误
+      await apiFetch('/health/proxy')
+      proxyStatus.value = {
+        ok: true,
+        checkedAt: new Date().toLocaleTimeString(),
+      }
+    }
+    catch (error: any) {
+      // ofetch 错误会包含 data 字段
+      proxyStatus.value = {
+        ok: false,
+        checkedAt: new Date().toLocaleTimeString(),
+        error: error.data?.error || '连接代理失败',
+      }
+    }
+  }
 
   // --- 新增: SSE 初始化和关闭 ---
   function initializeSSE() {
@@ -105,10 +127,12 @@ export const useTaskStore = defineStore('task', () => {
   return {
     tasks,
     isLoading,
+    proxyStatus,
     createTask,
     deleteTask,
     initializeSSE,
     closeSSE,
+    checkProxyStatus,
   }
 })
 

@@ -1,9 +1,7 @@
 // server/utils/downloader.ts
-import type { FetchOptions } from 'ofetch'
 import { Buffer } from 'node:buffer'
 import { mkdir, stat, writeFile } from 'node:fs/promises' // 引入 stat
 import path from 'node:path'
-import { env } from 'node:process'
 
 const MAP_URL_TEMPLATES: Record<string, string> = {
   'google-satellite': 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
@@ -21,6 +19,7 @@ export async function downloadTile(
   tile: { z: number, x: number, y: number },
   task: { id: number, mapType: string, downloadDelay: number },
 ): Promise<'downloaded' | 'failed' | 'skipped_404' | 'skipped_exists'> { // --- 1. 新增返回类型
+  const config = useRuntimeConfig()
   const { z, x, y } = tile
   const { id: taskId, mapType, downloadDelay } = task
 
@@ -33,7 +32,7 @@ export async function downloadTile(
   const url = urlTemplate.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
 
   // --- 2. 核心修改: 改变路径拼接方式 ---
-  const storageRoot = env.STORAGE_ROOT || '/data/geoscraper-tiles'
+  const storageRoot = config.storageRoot || '/data/geoscraper-tiles'
   const saveDir = path.join(storageRoot, mapType, String(z), String(x)) // 使用 mapType 替代 taskId
   const filePath = path.join(saveDir, `${y}.png`)
 
@@ -56,14 +55,14 @@ export async function downloadTile(
   }
 
   // --- ofetch 配置 (保持不变) ---
-  const fetchOptions: FetchOptions<'arrayBuffer'> = {
+  const fetchOptions: any = {
     responseType: 'arrayBuffer',
     headers: { 'User-Agent': 'Mozilla/5.0' },
     retry: 3,
     retryDelay: 1000,
     retryStatusCodes: [408, 429, 500, 502, 503, 504, 522, 524],
-    ...(env.HTTP_PROXY_URL && {
-      dispatcher: new (await import('undici')).ProxyAgent(env.HTTP_PROXY_URL),
+    ...(config.proxyUrl && {
+      dispatcher: new (await import('undici')).ProxyAgent(config.proxyUrl),
     }),
   }
 
@@ -71,7 +70,7 @@ export async function downloadTile(
     if (downloadDelay > 0)
       await new Promise(resolve => setTimeout(resolve, downloadDelay * 1000))
 
-    const imageBuffer = await $fetch(url, fetchOptions)
+    const imageBuffer: any = await $fetch(url, fetchOptions)
 
     await mkdir(saveDir, { recursive: true })
     await writeFile(filePath, Buffer.from(imageBuffer))

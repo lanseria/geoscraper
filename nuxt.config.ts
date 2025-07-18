@@ -38,6 +38,8 @@ export default defineNuxtConfig({
       password: '',
       db: 3,
     },
+    proxyUrl: '',
+    storageRoot: '',
     public: {
       maptilerKey: '',
       gisServerUrl: '',
