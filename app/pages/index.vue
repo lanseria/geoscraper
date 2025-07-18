@@ -99,6 +99,16 @@ async function handleDelete(task: any) {
         </div>
 
         <div class="mt-4 pt-4 border-t border-gray-200 flex items-center justify-end space-x-2 dark:border-gray-700">
+          <!-- 新增: 查看地图按钮 -->
+          <NuxtLink
+            v-if="task.status === 'completed'"
+            :to="`/viewer/${task.id}`"
+            class="icon-btn"
+            title="查看地图"
+          >
+            <div i-carbon-map />
+          </NuxtLink>
+
           <button
             class="icon-btn text-red-500 hover:text-red-700"
             :disabled="isDeleting === task.id"
