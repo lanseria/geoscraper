@@ -21,7 +21,7 @@ onMounted(() => {
       const tileUrl = `${config.public.gisServerUrl}/${newTask.mapType}/{z}/{x}/{y}.png`
 
       // 定义地图样式，数据源指向我们的瓦片服务
-      const mapStyle = {
+      const mapStyle: any = {
         version: 8,
         sources: {
           'local-tiles': {
@@ -92,7 +92,7 @@ onUnmounted(() => {
       <div v-else-if="error" class="text-red-500 flex h-full w-full items-center justify-center">
         错误: {{ error.message }}
       </div>
-      <div ref="mapContainer" class="inset-0 absolute" />
+      <div ref="mapContainer" class="h-full w-full inset-0 absolute" />
     </main>
   </div>
 </template>
