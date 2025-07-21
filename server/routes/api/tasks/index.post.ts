@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
       zoomLevels: taskData.zoomLevels,
       concurrency: taskData.concurrency,
       downloadDelay: taskData.downloadDelay,
-      status: 'queued',
+      status: 'queued', // 状态固定为 queued
     }).returning()
 
     if (!newTask) {
@@ -44,17 +44,20 @@ export default defineEventHandler(async (event) => {
     }
 
     // --- 核心修改 ---
-    // 立即调用任务执行器，但不要 await 它！
-    // 这会让任务在后台运行，而 API 可以立即响应前端。
-    executeDownloadTask(newTask.id).catch((err) => {
-      console.error(`[Task ${newTask.id}] Unhandled error in task runner:`, err)
-      // 可以在这里添加额外的错误处理，比如更新任务状态为 failed
-    })
+    // 不再立即调用任务执行器。
+    // executeDownloadTask(newTask.id).catch(...) // <--- 移除此行
 
-    // API 立即返回，告知前端任务已创建并开始处理
+    // --- 新增: 通过 SSE 通知前端有新任务加入 ---
+    // 这样列表可以实时更新，而无需等待页面刷新
+    const redis = useRedis()
+    if (!redis.isOpen)
+      await redis.connect()
+    await redis.publish('task-updates', JSON.stringify(newTask))
+
+    // API 立即返回，告知前端任务已创建
     return {
       statusCode: 201,
-      message: 'Task created and started.',
+      message: 'Task created and is now queued.', // 修改消息
       task: newTask,
     }
   }

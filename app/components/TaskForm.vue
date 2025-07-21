@@ -1,12 +1,23 @@
 <!-- eslint-disable no-console -->
 <!-- app/components/TaskForm.vue -->
 <script setup lang="ts">
+import type { tasks } from '~~/server/database/schema'
 import { estimateDiskSpace, estimateTileCount } from '~/utils/tile'
+
+type Task = typeof tasks.$inferSelect
+
+const props = defineProps<{
+  // --- 新增: 接收一个可选的初始任务数据，用于编辑模式 ---
+  initialData?: Task
+}>()
 
 const emit = defineEmits(['close'])
 const taskStore = useTaskStore()
 
-const formData = reactive({
+// --- 修改: 基于 props 初始化表单数据 ---
+const isEditMode = computed(() => !!props.initialData)
+
+const defaultFormData = {
   name: '',
   description: '',
   mapType: 'google-satellite',
@@ -17,9 +28,36 @@ const formData = reactive({
   zoomLevels: [10],
   concurrency: 5,
   downloadDelay: 0.2,
+}
+
+const formData = reactive({ ...defaultFormData })
+
+function populateForm(data: any) {
+  formData.name = data.name
+  formData.description = data.description || ''
+  formData.mapType = data.mapType
+  formData.bounds = data.bounds
+  formData.zoomLevels = data.zoomLevels
+  formData.concurrency = data.concurrency
+  formData.downloadDelay = data.downloadDelay
+}
+
+onMounted(() => {
+  // --- 修改: 根据模式填充表单 ---
+  if (isEditMode.value && props.initialData) {
+    // 编辑模式: 只填充 name 和 description
+    formData.name = props.initialData.name
+    formData.description = props.initialData.description || ''
+  }
+  else if (taskStore.taskToCopy) {
+    // 复制模式
+    const copiedTask = { ...taskStore.taskToCopy }
+    copiedTask.name = `Copy of ${copiedTask.name}`
+    populateForm(copiedTask)
+    taskStore.setTaskToCopy(null) // 用完后清空
+  }
 })
 
-// --- 新增: 用于存储验证错误的状态 ---
 const errors = ref<Record<string, string>>({})
 
 const mapTypes = [
@@ -27,7 +65,7 @@ const mapTypes = [
   { value: 'osm-standard', label: 'OpenStreetMap 标准图' },
   { value: 'osm-topo', label: 'OpenStreetMap 地形图' },
 ]
-const availableZooms = Array.from({ length: 19 }, (_, i) => i + 1) // 1-19
+const availableZooms = Array.from({ length: 19 }, (_, i) => i + 1)
 
 function toggleZoom(zoom: number) {
   const index = formData.zoomLevels.indexOf(zoom)
@@ -36,51 +74,46 @@ function toggleZoom(zoom: number) {
   else
     formData.zoomLevels.push(zoom)
   formData.zoomLevels.sort((a, b) => a - b)
-
-  // 用户交互时清除该字段的错误
   if (errors.value.zoomLevels)
     delete errors.value.zoomLevels
 }
 
-// 监听表单数据变化，当用户开始输入时，清除对应的错误信息
 watch(() => formData.name, () => {
   if (errors.value.name)
     delete errors.value.name
 })
 
 async function handleSubmit() {
-  // --- 重点修改: 错误处理逻辑 ---
-  errors.value = {} // 每次提交前先清空旧的错误
-
+  errors.value = {}
   try {
-    await taskStore.createTask(JSON.parse(JSON.stringify(formData)))
+    // --- 修改: 根据模式调用不同的 store action ---
+    if (isEditMode.value && props.initialData) {
+      await taskStore.updateTask(props.initialData.id, {
+        name: formData.name,
+        description: formData.description,
+      })
+    }
+    else {
+      await taskStore.createTask(JSON.parse(JSON.stringify(formData)))
+    }
     emit('close')
   }
   catch (error: any) {
-    // 检查是否是后端返回的验证错误
     if (error.data && Array.isArray(error.data)) {
       const newErrors: Record<string, string> = {}
-      // error.data 就是 Zod 错误数组
       for (const err of error.data) {
-        // err.path 是一个数组，如 ['name'] 或 ['bounds', 'sw', 'lat']
-        // 我们通常只关心顶层字段的错误
         const fieldName = err.path[0]
-        if (fieldName && !newErrors[fieldName]) {
+        if (fieldName && !newErrors[fieldName])
           newErrors[fieldName] = err.message
-        }
       }
       errors.value = newErrors
-      console.log('Validation errors from backend:', newErrors)
     }
     else {
-      // 其他类型的错误，可以在这里添加一个通用的错误提示，比如使用 toast
-      console.error('Submission failed with a non-validation error:', error)
-      errors.value.general = '创建任务失败，请检查网络或稍后重试。'
+      errors.value.general = '操作失败，请检查网络或稍后重试。'
     }
   }
 }
 
-// 计算属性 (保持不变)
 const estimatedTiles = computed(() => {
   return estimateTileCount(formData.bounds, formData.zoomLevels)
 })
@@ -93,19 +126,20 @@ const estimatedSpace = computed(() => {
 <template>
   <form class="p-6 md:p-8" @submit.prevent="handleSubmit">
     <h2 class="text-2xl font-bold mb-8">
-      创建新任务
+      <!-- 修改: 动态标题 -->
+      {{ isEditMode ? '编辑任务' : '创建新任务' }}
     </h2>
 
+    <!--
+      修改:
+      - 编辑模式下，禁用大部分字段的输入
+      - 使用 <fieldset :disabled="isEditMode"> 来包裹不可编辑的部分
+    -->
     <div class="gap-y-6 grid grid-cols-1 md:gap-x-8 md:grid-cols-2">
       <!-- 左列 -->
       <div class="space-y-6">
         <div>
           <label for="name" class="form-label">任务名称</label>
-          <!--
-            修改:
-            1. :class 动态绑定错误样式
-            2. 添加 <p> 标签显示错误信息
-          -->
           <input
             id="name"
             v-model="formData.name"
@@ -121,18 +155,19 @@ const estimatedSpace = computed(() => {
         <div>
           <label for="description" class="form-label">描述 (可选)</label>
           <textarea id="description" v-model="formData.description" rows="3" class="form-input" />
-          <!-- 描述字段一般不校验，但可以预留位置 -->
           <p v-if="errors.description" class="text-sm text-red-600 mt-1">
             {{ errors.description }}
           </p>
         </div>
-        <div>
+        <!-- 仅在创建模式下显示 -->
+        <div v-if="!isEditMode">
           <label for="mapType" class="form-label">贴图类型</label>
           <select
             id="mapType"
             v-model="formData.mapType"
             class="form-select"
             :class="{ 'border-red-500 focus:border-red-500 focus:ring-red-500/50': errors.mapType }"
+            :disabled="isEditMode"
           >
             <option v-for="mt in mapTypes" :key="mt.value" :value="mt.value">
               {{ mt.label }}
@@ -144,8 +179,8 @@ const estimatedSpace = computed(() => {
         </div>
       </div>
 
-      <!-- 右列 (保持不变) -->
-      <div class="space-y-6">
+      <!-- 右列 (仅创建模式显示) -->
+      <div v-if="!isEditMode" class="space-y-6">
         <div>
           <label class="form-label">地理范围选择</label>
           <p class="text-xs text-gray-500 mb-2">
@@ -157,12 +192,9 @@ const estimatedSpace = computed(() => {
         </div>
       </div>
 
-      <!-- 跨两列的全宽部分 -->
-      <div class="md:col-span-2">
-        <label
-          class="form-label"
-          :class="{ 'text-red-600': errors.zoomLevels }"
-        >
+      <!-- 跨两列的全宽部分 (仅创建模式显示) -->
+      <div v-if="!isEditMode" class="md:col-span-2">
+        <label class="form-label" :class="{ 'text-red-600': errors.zoomLevels }">
           缩放级别 (可多选)
         </label>
         <div class="mt-2 gap-2 grid grid-cols-6 md:grid-cols-12 sm:grid-cols-10">
@@ -182,17 +214,13 @@ const estimatedSpace = computed(() => {
             {{ zoom }}
           </button>
         </div>
-        <!--
-          修改:
-          1. 添加 <p> 标签显示 zoomLevels 的错误信息
-        -->
         <p v-if="errors.zoomLevels" class="text-sm text-red-600 mt-1">
           {{ errors.zoomLevels }}
         </p>
       </div>
 
-      <!-- (其他部分保持不变) -->
-      <div class="gap-x-8 gap-y-6 grid grid-cols-1 md:col-span-2 sm:grid-cols-2">
+      <!-- 其他设置 (仅创建模式显示) -->
+      <div v-if="!isEditMode" class="gap-x-8 gap-y-6 grid grid-cols-1 md:col-span-2 sm:grid-cols-2">
         <div>
           <label for="concurrency" class="form-label">并发数 ({{ formData.concurrency }})</label>
           <input id="concurrency" v-model.number="formData.concurrency" type="range" min="1" max="20" class="mt-2 appearance-none rounded-lg bg-gray-300 h-2 w-full cursor-pointer dark:bg-gray-700">
@@ -206,29 +234,30 @@ const estimatedSpace = computed(() => {
 
     <!-- 底部按钮和估算信息 -->
     <div class="mt-10 pt-6 border-t border-gray-200 flex items-center justify-between dark:border-gray-700">
-      <!-- 左侧：估算信息 -->
       <div class="text-sm text-gray-600 dark:text-gray-400">
-        <!-- 新增: 通用错误信息显示 -->
         <p v-if="errors.general" class="text-sm text-red-600 font-semibold mb-2">
           {{ errors.general }}
         </p>
-        <div class="flex items-center">
-          <div i-carbon-calculation class="mr-2" />
-          <span>预估瓦片总数: <strong class="text-sky-600 font-semibold dark:text-sky-500">{{ estimatedTiles.toLocaleString() }}</strong></span>
-        </div>
-        <div class="mt-1 flex items-center">
-          <div i-carbon-data-base class="mr-2" />
-          <span>预估磁盘占用: <strong class="text-sky-600 font-semibold dark:text-sky-500">{{ estimatedSpace }}</strong></span>
-        </div>
+        <!-- 估算信息仅在创建模式下显示 -->
+        <template v-if="!isEditMode">
+          <div class="flex items-center">
+            <div i-carbon-calculation class="mr-2" />
+            <span>预估瓦片总数: <strong class="text-sky-600 font-semibold dark:text-sky-500">{{ estimatedTiles.toLocaleString() }}</strong></span>
+          </div>
+          <div class="mt-1 flex items-center">
+            <div i-carbon-data-base class="mr-2" />
+            <span>预估磁盘占用: <strong class="text-sky-600 font-semibold dark:text-sky-500">{{ estimatedSpace }}</strong></span>
+          </div>
+        </template>
       </div>
 
-      <!-- 右侧：操作按钮 -->
       <div class="space-x-4">
         <button type="button" class="btn-secondary" @click="emit('close')">
           取消
         </button>
         <button type="submit" class="btn-primary" :disabled="taskStore.isLoading">
-          {{ taskStore.isLoading ? '创建中...' : '创建任务' }}
+          <!-- 修改: 动态按钮文本 -->
+          {{ isEditMode ? '保存更改' : '创建任务' }}
         </button>
       </div>
     </div>

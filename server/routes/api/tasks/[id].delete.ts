@@ -1,11 +1,14 @@
 // server/routes/api/tasks/[id].delete.ts
 /* eslint-disable no-console */
+import { rm } from 'node:fs/promises'
+import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { tasks } from '~~/server/database/schema'
 
 export default defineEventHandler(async (event) => {
-  // 从路由参数中获取任务ID
   const taskId = getRouterParam(event, 'id')
+  const { deleteFiles } = getQuery(event)
+
   if (!taskId || Number.isNaN(Number(taskId))) {
     throw createError({
       statusCode: 400,
@@ -18,10 +21,8 @@ export default defineEventHandler(async (event) => {
   const queue = useQueue()
 
   try {
-    // 1. 从 BullMQ 队列中移除作业 (逻辑不变)
     const jobs = await queue.getJobs(['wait', 'active', 'delayed'])
     const jobToRemove = jobs.find(job => job?.data.taskId === numericTaskId)
-
     if (jobToRemove) {
       try {
         await jobToRemove.remove()
@@ -32,19 +33,45 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // 2. 从数据库中删除任务记录 (逻辑不变)
+    // 在删除数据库记录前，先查询出任务信息，因为需要用它来定位文件路径
+    const [taskToDelete] = await db.select().from(tasks).where(eq(tasks.id, numericTaskId))
+
+    // 从数据库中删除任务记录
     const deletedTasks = await db.delete(tasks).where(eq(tasks.id, numericTaskId)).returning()
+
     if (deletedTasks.length === 0) {
-      return {
-        statusCode: 200,
-        message: 'Task not found in database, assumed already deleted.',
-      }
+      // 即使数据库中没有，也可能需要清理文件（如果 taskToDelete 查询到了）
+      console.log(`[Task ${numericTaskId}] Task not found in database, assumed already deleted.`)
     }
-    console.log(`[Task ${numericTaskId}] Deleted from database.`)
+    else {
+      console.log(`[Task ${numericTaskId}] Deleted from database.`)
+    }
 
-    console.log(`[Task ${numericTaskId}] Task metadata deleted. Tile files are preserved in the shared cache.`)
+    // --- 新增: 文件删除逻辑 ---
+    if (deleteFiles === 'true' && taskToDelete) {
+      const config = useRuntimeConfig()
+      const storageRoot = config.storageRoot || '/data/geoscraper-tiles'
 
-    // 4. 返回成功响应 (逻辑不变)
+      // 注意：这里的删除逻辑是基于整个 mapType 的，这符合共享缓存的设计。
+      // 我们将删除此任务涉及到的所有 zoom level 目录。
+      // 这是一个潜在的破坏性操作，因为会影响其他共享此 mapType 的任务。
+      // 更安全的做法是只删除特定边界内的文件，但这会非常复杂。
+      // 当前实现假定用户了解此行为。
+      console.log(`[Task ${numericTaskId}] Attempting to delete files for mapType: ${taskToDelete.mapType}`)
+      for (const zoom of taskToDelete.zoomLevels) {
+        const dirToDelete = path.join(storageRoot, taskToDelete.mapType, String(zoom))
+        try {
+          console.log(`[Task ${numericTaskId}] Removing directory: ${dirToDelete}`)
+          await rm(dirToDelete, { recursive: true, force: true })
+        }
+        catch (fsError) {
+          console.error(`[Task ${numericTaskId}] Failed to delete directory ${dirToDelete}.`, fsError)
+          // 不抛出错误，继续执行
+        }
+      }
+      console.log(`[Task ${numericTaskId}] File deletion process completed.`)
+    }
+
     setResponseStatus(event, 204)
   }
   catch (error) {
