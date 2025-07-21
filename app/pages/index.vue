@@ -21,7 +21,7 @@ const isFormVisible = ref(false)
 const isDeleting = ref<number | null>(null)
 const isStarting = ref<number | null>(null)
 const editingTask = ref<Task | null>(null)
-// --- 新增: 重试状态 ---
+// --- 重试状态 ---
 const isRetrying = ref<number | null>(null)
 
 function openCreateForm() {
@@ -54,7 +54,7 @@ async function handleStart(task: Task) {
   }
 }
 
-// --- 新增: 处理重试 ---
+// --- 处理重试 ---
 async function handleRetry(task: Task) {
   isRetrying.value = task.id
   try {
@@ -70,7 +70,7 @@ async function handleRetry(task: Task) {
   }
 }
 
-// --- 修改: 处理删除，增加选项 ---
+// --- 处理删除，增加选项 ---
 async function handleDelete(task: Task) {
   const message = `确定要删除任务 "${task.name}" 吗？\n此操作不可逆。`
   const confirmed = window.confirm(message)
@@ -101,7 +101,7 @@ function closeForm() {
 
 <template>
   <div class="p-4 md:p-8">
-    <!-- Header 和 代理状态 (保持不变) -->
+    <!-- Header 和 代理状态 -->
     <div class="mb-6 flex items-center justify-between">
       <h1 class="text-2xl font-bold">
         任务仪表盘
@@ -145,7 +145,7 @@ function closeForm() {
       </div>
     </div>
 
-    <!-- 任务列表 (保持不变) -->
+    <!-- 任务列表 -->
     <div v-if="isLoading && tasks.length === 0" class="text-gray-500 p-10 text-center">
       <div i-carbon-circle-dash class="mx-auto mb-2 animate-spin" />
       连接中，正在获取任务列表...
@@ -156,7 +156,7 @@ function closeForm() {
     </div>
     <div v-else grid="~ cols-1 md:cols-2 lg:cols-3 gap-6">
       <div v-for="task in tasks" :key="task.id" class="p-4 border rounded-lg bg-white flex flex-col shadow-md dark:border-gray-700 dark:bg-gray-800">
-        <!-- 任务详情 (保持不变) -->
+        <!-- 任务详情 -->
         <div class="flex-grow space-y-3">
           <div class="flex items-start justify-between">
             <div>
@@ -199,7 +199,7 @@ function closeForm() {
           </div>
         </div>
 
-        <!-- --- 修改: 操作按钮区域 --- -->
+        <!-- 操作按钮区域 -->
         <div class="mt-4 pt-3 border-t border-gray-200 flex items-center justify-end space-x-2 dark:border-gray-700">
           <button
             v-if="task.status === 'queued'"
@@ -210,7 +210,7 @@ function closeForm() {
             <div v-else i-carbon-play />
           </button>
 
-          <!-- 新增: 重试按钮 -->
+          <!-- 重试按钮 -->
           <button
             v-if="task.status === 'failed'"
             class="icon-btn text-orange-600 hover:text-orange-700"
@@ -249,8 +249,8 @@ function closeForm() {
       </div>
     </div>
 
-    <!-- 弹窗 (保持不变) -->
-    <div v-if="isFormVisible" class="bg-black/50 flex items-center inset-0 justify-center fixed z-50" @click.self="closeForm">
+    <!-- 弹窗 -->
+    <div v-if="isFormVisible" class="bg-black/50 flex items-center inset-0 justify-center fixed z-50">
       <div class="rounded-lg bg-white max-h-[90vh] max-w-4xl w-full shadow-xl overflow-y-auto dark:bg-gray-900">
         <TaskForm :initial-data="editingTask!" @close="closeForm" />
       </div>
