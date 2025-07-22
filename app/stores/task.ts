@@ -14,7 +14,7 @@ export const useTaskStore = defineStore('task', () => {
   const proxyStatus = ref<{ ok: boolean, checkedAt?: string, error?: string } | null>(null)
   let eventSource: EventSource | null = null
 
-  // --- 新增: 用于复制功能的 ref ---
+  // --- 用于复制功能的 ref ---
   const taskToCopy = ref<Task | null>(null)
 
   async function checkProxyStatus() {
@@ -81,7 +81,7 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  // --- 新增: 启动任务的 action ---
+  // --- 启动任务的 action ---
   async function startTask(taskId: number) {
     try {
       await apiFetch(`/tasks/${taskId}/start`, { method: 'POST' })
@@ -90,6 +90,28 @@ export const useTaskStore = defineStore('task', () => {
     catch (error) {
       console.error(`Failed to start task ${taskId}`, error)
       throw error // 抛出错误，以便 UI 层可以捕获并显示提示
+    }
+  }
+
+  // --- 新增: 校验任务的 action ---
+  async function verifyTask(taskId: number) {
+    try {
+      await apiFetch(`/tasks/${taskId}/verify`, { method: 'POST' })
+    }
+    catch (error) {
+      console.error(`Failed to start verification for task ${taskId}`, error)
+      throw error
+    }
+  }
+
+  // --- 新增: 重新下载任务的 action ---
+  async function redownloadMissing(taskId: number) {
+    try {
+      await apiFetch(`/tasks/${taskId}/redownload`, { method: 'POST' })
+    }
+    catch (error) {
+      console.error(`Failed to start redownload for task ${taskId}`, error)
+      throw error
     }
   }
 
@@ -108,7 +130,7 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  // --- 新增: 更新任务的 action ---
+  // --- 更新任务的 action ---
   async function updateTask(taskId: number, payload: TaskUpdatePayload) {
     try {
       const response = await apiFetch(`/tasks/${taskId}`, {
@@ -124,7 +146,7 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  // --- 新增: 重试任务的 action ---
+  // --- 重试任务的 action ---
   async function retryTask(taskId: number) {
     try {
       await apiFetch(`/tasks/${taskId}/retry`, { method: 'POST' })
@@ -136,7 +158,7 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  // --- 修改: deleteTask action ---
+  // --- deleteTask action ---
   async function deleteTask(taskId: number, deleteFiles: boolean) {
     try {
       // 将 deleteFiles 作为查询参数传递
@@ -153,7 +175,7 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  // --- 新增: 用于复制功能的函数 ---
+  // --- 用于复制功能的函数 ---
   function setTaskToCopy(task: Task | null) {
     taskToCopy.value = task
   }
@@ -162,16 +184,18 @@ export const useTaskStore = defineStore('task', () => {
     tasks,
     isLoading,
     proxyStatus,
-    taskToCopy, // 导出
+    taskToCopy,
     createTask,
-    updateTask, // 导出
-    startTask, // 导出
+    updateTask,
+    startTask,
     retryTask,
     deleteTask,
+    verifyTask,
+    redownloadMissing,
     initializeSSE,
     closeSSE,
     checkProxyStatus,
-    setTaskToCopy, // 导出
+    setTaskToCopy,
   }
 })
 

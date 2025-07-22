@@ -25,6 +25,13 @@ export const tasks = geoscraperSchema.table('tasks', {
   totalTiles: real('total_tiles').default(0),
   completedTiles: real('completed_tiles').default(0),
 
+  // --- 校验相关字段 ---
+  verificationStatus: varchar('verification_status', { length: 50 }).default('none').notNull(), // none, running, completed
+  verificationProgress: real('verification_progress').default(0),
+  verifiedTiles: real('verified_tiles').default(0),
+  missingTiles: real('missing_tiles').default(0),
+  missingTileList: jsonb('missing_tile_list').$type<{ z: number, x: number, y: number }[]>(),
+
   // 时间戳
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
