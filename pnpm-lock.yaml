@@ -91,8 +91,8 @@ catalogs:
 
 overrides:
   '@nuxt/devtools': ^2.6.2
-  '@nuxt/kit': ^3.17.6
-  nuxt: ^3.17.6
+  '@nuxt/kit': ^3.17.7
+  nuxt: ^3.17.7
   unplugin: ^2.3.5
   vite: ^7.0.5
 
@@ -158,7 +158,7 @@ importers:
         specifier: catalog:frontend
         version: 5.6.1
       nuxt:
-        specifier: ^3.17.6
+        specifier: ^3.17.7
         version: 3.17.7(@netlify/blobs@9.1.2)(@parcel/watcher@2.5.1)(@types/node@24.0.15)(@vue/compiler-sfc@3.5.17)(db0@0.3.2(drizzle-orm@0.44.3(@types/pg@8.15.4)(pg@8.16.3)))(drizzle-orm@0.44.3(@types/pg@8.15.4)(pg@8.16.3))(eslint@9.31.0(jiti@2.4.2))(ioredis@5.6.1)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.45.1)(terser@5.43.1)(typescript@5.8.3)(vite@7.0.5(@types/node@24.0.15)(jiti@2.4.2)(terser@5.43.1)(yaml@2.8.0))(vue-tsc@3.0.3(typescript@5.8.3))(yaml@2.8.0)
       pg:
         specifier: catalog:backend
@@ -2557,7 +2557,7 @@ packages:
   '@vueuse/nuxt@13.5.0':
     resolution: {integrity: sha512-TePmrPlTSTUc9zN0EHu45e6m5UARX3zDy6bSmF47hzbIuqVMG+Vc7ColLA50VZaTNsSdgYc3/Bq3VfYcUEnaEg==}
     peerDependencies:
-      nuxt: ^3.17.6
+      nuxt: ^3.17.7
       vue: ^3.5.0
 
   '@vueuse/shared@13.5.0':
