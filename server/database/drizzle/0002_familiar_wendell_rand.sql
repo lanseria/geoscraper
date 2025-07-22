@@ -1,0 +1,1 @@
+ALTER TABLE "geoscraper"."tasks" ADD COLUMN "non_existent_tiles" jsonb;

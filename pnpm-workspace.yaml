@@ -30,6 +30,7 @@ catalogs:
     typescript: ^5.8.3
     vue-tsc: ^3.0.3
   frontend:
+    '@types/geojson': ^7946.0.16
     '@vueuse/core': ^13.5.0
     maplibre-gl: ^5.6.1
     pinia: ^3.0.3

@@ -32,6 +32,8 @@ export const tasks = geoscraperSchema.table('tasks', {
   missingTiles: real('missing_tiles').default(0),
   missingTileList: jsonb('missing_tile_list').$type<{ z: number, x: number, y: number }[]>(),
 
+  nonExistentTiles: jsonb('non_existent_tiles').$type<{ z: number, x: number, y: number }[]>(),
+
   // 时间戳
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

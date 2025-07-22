@@ -24,6 +24,7 @@
     "@nuxt/eslint": "catalog:build",
     "@nuxtjs/color-mode": "catalog:build",
     "@pinia/nuxt": "catalog:build",
+    "@types/geojson": "catalog:frontend",
     "@types/pg": "catalog:backend",
     "@unocss/eslint-config": "catalog:build",
     "@unocss/nuxt": "catalog:build",
