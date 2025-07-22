@@ -53,7 +53,6 @@ export async function executeDownloadTask(taskId: number) {
   console.log(`[Task ${taskId}] Nitro task runner started.`)
   const db = useDb()
 
-  // --- 核心修改: 添加 try...catch 块 ---
   try {
     const [task] = await db.select().from(tasksSchema).where(eq(tasksSchema.id, taskId))
     if (!task) {
@@ -63,6 +62,9 @@ export async function executeDownloadTask(taskId: number) {
 
     const allTiles = calculateAllTiles(task.bounds, task.zoomLevels)
     const totalTiles = allTiles.length
+
+    let lastProgress = -1
+    let lastCompletedCount = -1
 
     await updateTaskProgress(taskId, { status: 'running', totalTiles, progress: 0, completedTiles: 0 })
 
@@ -79,10 +81,15 @@ export async function executeDownloadTask(taskId: number) {
         completedCount++
 
       const now = Date.now()
-      if (now - lastUpdateTime > 1000 || completedCount === totalTiles) {
+      const isLastBatch = completedCount >= totalTiles // 使用 >= 以防万一
+      if (now - lastUpdateTime > 1000 || isLastBatch) {
         lastUpdateTime = now
-        const progress = totalTiles > 0 ? (completedCount / totalTiles) * 100 : 100
-        await updateTaskProgress(taskId, { progress, completedTiles: completedCount })
+        const progress = totalTiles > 0 ? Math.floor((completedCount / totalTiles) * 100) : 100
+        if (progress !== lastProgress || completedCount !== lastCompletedCount || isLastBatch) {
+          lastProgress = progress
+          lastCompletedCount = completedCount
+          await updateTaskProgress(taskId, { progress, completedTiles: completedCount })
+        }
       }
     }
 
@@ -93,11 +100,10 @@ export async function executeDownloadTask(taskId: number) {
 
     await runWithConcurrency(downloadTasks, fn => fn(), task.concurrency)
 
-    console.log(`[Task ${taskId}] Processing finished. ${completedCount}/${totalTiles} tiles successful.`)
-    await updateTaskProgress(taskId, { status: 'completed' })
+    // 确保最后的状态是100%
+    await updateTaskProgress(taskId, { status: 'completed', progress: 100, completedTiles: completedCount })
   }
   catch (error: any) {
-    // 捕获到任何未处理的异常，将任务状态更新为 'failed'
     console.error(`[Task ${taskId}] An unexpected error occurred:`, error)
     await updateTaskProgress(taskId, { status: 'failed' })
   }

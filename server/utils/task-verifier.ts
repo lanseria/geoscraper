@@ -50,6 +50,11 @@ export async function executeVerificationTask(taskId: number) {
       return
     }
 
+    // --- 新增: 状态追踪变量 ---
+    let lastProgress = -1
+    let lastVerifiedCount = -1
+    let lastMissingCount = -1
+
     await updateTaskState(taskId, { verificationStatus: 'running', verificationProgress: 0, verifiedTiles: 0, missingTiles: 0 })
 
     let checkedCount = 0
@@ -69,28 +74,35 @@ export async function executeVerificationTask(taskId: number) {
         }
       }
       catch (error: any) {
-        // ENOENT 表示文件不存在，这是我们主要关心的
         if (error.code !== 'ENOENT')
           console.error(`[Task ${taskId}] Error checking file ${filePath}:`, error)
       }
-
       if (!fileExistsAndIsValid)
         missingTileList.push(tile)
-
       checkedCount++
-
       const now = Date.now()
-      if (now - lastUpdateTime > 1000 || checkedCount === totalTiles) {
+      const isLastTile = checkedCount === totalTiles
+      if (now - lastUpdateTime > 1000 || isLastTile) {
         lastUpdateTime = now
-        const progress = totalTiles > 0 ? (checkedCount / totalTiles) * 100 : 100
-        await updateTaskState(taskId, {
-          verificationProgress: progress,
-          verifiedTiles: verifiedCount,
-          missingTiles: missingTileList.length,
-        })
+        const progress = totalTiles > 0 ? Math.floor((checkedCount / totalTiles) * 100) : 100
+        const missingCount = missingTileList.length
+
+        // 只有在进度、已验证数或缺失数发生变化时才更新
+        if (progress !== lastProgress || verifiedCount !== lastVerifiedCount || missingCount !== lastMissingCount || isLastTile) {
+          lastProgress = progress
+          lastVerifiedCount = verifiedCount
+          lastMissingCount = missingCount
+
+          await updateTaskState(taskId, {
+            verificationProgress: progress,
+            verifiedTiles: verifiedCount,
+            missingTiles: missingCount,
+          })
+        }
       }
     }
 
+    // 最终更新，写入缺失的瓦片列表
     await updateTaskState(taskId, {
       verificationStatus: 'completed',
       missingTileList,
@@ -121,6 +133,10 @@ export async function executeRedownloadTask(taskId: number) {
     const tilesToRedownload = task.missingTileList
     const totalToRedownload = tilesToRedownload.length
 
+    // --- 新增: 状态追踪变量 ---
+    let lastProgress = -1
+    let lastCompletedCount = -1
+
     // 重置主进度条，用于重下载过程
     await updateTaskState(taskId, { status: 'running', progress: 0, totalTiles: totalToRedownload, completedTiles: 0 })
 
@@ -133,10 +149,17 @@ export async function executeRedownloadTask(taskId: number) {
         completedCount++
 
       const now = Date.now()
-      if (now - lastUpdateTime > 500 || completedCount === totalToRedownload) {
+      const isLastTile = completedCount === totalToRedownload || (tile === tilesToRedownload[tilesToRedownload.length - 1])
+      if (now - lastUpdateTime > 500 || isLastTile) {
         lastUpdateTime = now
-        const progress = totalToRedownload > 0 ? (completedCount / totalToRedownload) * 100 : 100
-        await updateTaskState(taskId, { progress, completedTiles: completedCount })
+        const progress = totalToRedownload > 0 ? Math.floor((completedCount / totalToRedownload) * 100) : 100
+
+        if (progress !== lastProgress || completedCount !== lastCompletedCount || isLastTile) {
+          lastProgress = progress
+          lastCompletedCount = completedCount
+
+          await updateTaskState(taskId, { progress, completedTiles: completedCount })
+        }
       }
     }
 
