@@ -1,219 +1,186 @@
 # GeoScraper
 
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Nuxt](https://img.shields.io/badge/Nuxt-v3.x-00DC82.svg)](https://nuxt.com)
-[![Python](https://img.shields.io/badge/Python-v3.12+-3776AB.svg)](https://www.python.org/)
-[![Drizzle ORM](https://img.shields.io/badge/ORM-Drizzle-A3E635.svg)](https://orm.drizzle.team/)
+**一个用于下载和管理地理瓦片地图的 Web 工具。**
 
-一个功能强大的 Web 应用，用于可视化选择、下载和管理地理瓦片地图数据。
-
-![GeoScraper 仪表盘](./screenshot.jpg)
+![GeoScraper 仪表盘](screenshots/geoscraper-dashboard.png)
+![GeoScraper 任务创建](screenshots/geoscraper-create.png)
 
 ## ✨ 核心功能
 
-- **可视化地图选区**: 通过交互式地图界面，轻松框选需要下载的地理范围。
-- **多地图源支持**: 内置支持谷歌卫星图、OpenStreetMap 标准图和地形图等多种数据源。
-- **实时任务估算**: 在创建任务时，即时计算所需下载的瓦片总数和预估的磁盘空间占用。
-- **后台异步处理**: 采用独立的 Python 工作进程处理耗时的下载任务，不阻塞前端操作。
-- **实时进度更新**: 使用 Server-Sent Events (SSE) 技术，将任务的创建、下载进度和完成状态实时推送到前端，无需手动刷新。
-- **并发下载与延迟控制**: 支持自定义下载并发数和请求延迟，以适应不同网络环境和目标服务器策略。
-- **响应式布局与深色模式**: 界面在桌面和移动设备上均有良好表现，并支持明暗主题切换。
+- **交互式任务创建**: 通过拖拽和缩放地图来直观地选择下载区域。
+- **多地图源支持**: 内置支持谷歌卫星图、OpenStreetMap 等多种地图类型。
+- **实时任务仪表盘**: 使用 SSE (Server-Sent Events) 技术，实时更新所有任务的状态、下载进度和校验结果，无需手动刷新。
+- **并发下载与后台执行**: 任务在后端非阻塞执行，支持自定义并发数和下载延迟，提高下载效率。
+- **文件完整性校验**: 对已完成的任务，可一键启动文件校验，快速找出缺失或损坏的瓦片。
+- **智能修复与管理**:
+  - **一键重下载**: 自动重新下载所有缺失的瓦片。
+  - **标记空白瓦片**: 在地图查看器中，可将海洋、天空等无内容的瓦片标记为“不存在”，避免在后续校验中被误判。
+- **内置地图查看器**: 直接在浏览器中预览已下载的瓦片地图，并以可视化的方式高亮展示缺失瓦片的位置。
+- **共享瓦片缓存**: 所有相同地图类型的任务共享同一份瓦片缓存，节约磁盘空间，避免重复下载。
+- **网络代理支持**: 支持配置 HTTP 代理进行瓦片下载，并提供代理连通性健康检查。
+- **容器化部署**: 提供开箱即用的 `Dockerfile` 和 `docker-compose.yml` 配置，轻松实现一键部署。
 
-## 🏛️ 系统架构
-
-GeoScraper 采用现代化的前后端分离与任务队列架构，确保了系统的高响应性、可伸缩性和健壮性。
-
-```
-+------------------+     (HTTP API)     +-------------------+     (DB / Queue)     +-----------------+
-|                  | <----------------> |                   | <------------------> |                 |
-|  用户 (浏览器)     |                    |   Nuxt 3 / Nitro  |                      |  PostgreSQL DB  |
-|   (Vue Frontend) | -----------------> |    (Backend API)  | -------------------> |    (Redis)      |
-|                  | <----------------- |                   |                      |                 |
-+------------------+   (SSE Real-time)   +-------------------+                      +--------+--------+
-                                                 ^                                         |
-                                                 | (Redis Pub/Sub)                         | (BullMQ Listen)
-                                                 |                                         |
-                                                 |                                         v
-                                         +-------+---------+
-                                         |                 |
-                                         |  Python Worker  |
-                                         |  (Downloader)   |
-                                         |                 |
-                                         +-----------------+
-```
-
-1.  **前端 (Nuxt/Vue)**: 用户交互界面，负责创建任务和展示任务状态。
-2.  **后端 API (Nitro)**:
-    - 接收前端的请求（如创建/删除任务）。
-    - 将任务信息写入 **PostgreSQL** 数据库。
-    - 将任务 ID 推送到 **Redis** 中的 **BullMQ** 任务队列。
-    - 通过 SSE 端点，监听 Redis 的 **Pub/Sub** 频道，并将实时更新推送到前端。
-3.  **后台工作进程 (Python Worker)**:
-    - 独立于 Web 服务运行，持续监听 Redis 任务队列。
-    - 获取任务后，从数据库读取任务详情。
-    - 并发下载地图瓦片，并将下载进度、瓦片数等信息更新回 **PostgreSQL**。
-    - 每次更新数据库后，通过 Redis 的 **Pub/Sub** 发布一个事件，触发后端 API 向前端推送实时消息。
-
-## 🛠️ 技术栈
+## 🚀 技术栈
 
 - **前端**:
-  - [**Nuxt 3**](https://nuxt.com/): 核心框架
-  - [**Vue 3**](https://vuejs.org/): 响应式 UI
-  - [**Pinia**](https://pinia.vuejs.org/): 状态管理
-  - [**UnoCSS**](https://github.com/unocss/unocss): 原子化 CSS 引擎
-  - [**MapLibre GL**](https://maplibre.org/): 交互式地图渲染
-- **后端 API**:
-  - [**Nitro**](https://nitro.unjs.io/): Nuxt 的高性能服务器引擎
-  - [**Drizzle ORM**](https://orm.drizzle.team/): 类型安全的 TypeScript ORM
-  - [**BullMQ**](https://bullmq.io/): 基于 Redis 的高性能任务队列
-- **后台工作进程**:
-  - [**Python 3.12+**](https://www.python.org/)
-  - [**asyncio**](https://docs.python.org/3/library/asyncio.html): 异步 I/O
-  - [**httpx**](https://www.python-httpx.org/): 现代化的异步 HTTP 客户端
-  - [**psycopg2**](https://www.psycopg.org/): PostgreSQL 驱动
-- **数据库与缓存**:
-  - [**PostgreSQL**](https://www.postgresql.org/): 主数据库
-  - [**Redis**](https://redis.io/): 用于任务队列和消息发布/订阅
+  - **框架**: [Nuxt 3](https://nuxt.com/) (Vue 3)
+  - **状态管理**: [Pinia](https://pinia.vuejs.org/)
+  - **UI & 样式**: [UnoCSS](https://unocss.dev/) (原子化 CSS)
+  - **地图渲染**: [MapLibre GL JS](https://maplibre.org/)
+  - **类型系统**: [TypeScript](https://www.typescriptlang.org/)
 
-## 🚀 快速开始 (本地开发)
+- **后端**:
+  - **框架**: [Nitro](https://nitro.unjs.io/) (Nuxt 3 的服务端引擎)
+  - **ORM**: [Drizzle ORM](https://orm.drizzle.team/) (类型安全的 SQL 查询构建器)
+  - **异步任务**: 原生后台任务 + [Redis](https://redis.io/) (用于消息发布/订阅)
+
+- **数据库与服务**:
+  - **数据库**: [PostgreSQL](https://www.postgresql.org/)
+  - **消息与缓存**: [Redis](https://redis.io/)
+
+- **开发与构建**:
+  - **包管理器**: [pnpm](https://pnpm.io/)
+  - **代码规范**: [@antfu/eslint-config](https://github.com/antfu/eslint-config)
+  - **部署**: [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
+
+## 🔧 项目启动
 
 ### 1. 先决条件
 
-- [Node.js](https://nodejs.org/) (v20+)
-- [pnpm](https://pnpm.io/) (v10+)
-- [Python](https://www.python.org/) (v3.12+)
-- [Docker](https://www.docker.com/) 和 [Docker Compose](https://docs.docker.com/compose/)
+- [Node.js](https://nodejs.org/) (v22.x 或更高版本)
+- [pnpm](https://pnpm.io/installation) (v10.x 或更高版本)
+- [Docker](https://www.docker.com/get-started/) 和 [Docker Compose](https://docs.docker.com/compose/install/)
 
-### 2. 环境搭建
+### 2. 环境配置
 
-1.  **克隆仓库**
+1.  **克隆项目到本地**:
 
     ```bash
     git clone https://github.com/lanseria/geoscraper.git
     cd geoscraper
     ```
 
-2.  **启动依赖服务**
-    项目依赖 PostgreSQL 和 Redis。我们提供了一个 `docker-compose.yml` 文件来一键启动它们。
+2.  **安装依赖**:
 
     ```bash
-    docker-compose up -d
+    pnpm install
     ```
 
-3.  **安装依赖**
+3.  **设置环境变量**:
+    项目依赖 PostgreSQL 和 Redis 服务。你可以使用 Docker 快速启动它们。
 
-    - 安装前端和后端依赖:
-      ```bash
-      pnpm install
-      ```
-    - 安装 Python Worker 依赖 (建议在虚拟环境中进行):
-
-      ````bash # 创建并激活虚拟环境 (可选但推荐)
-      python -m venv .venv
-      source .venv/bin/activate # on Windows: .venv\Scripts\activate
-
-          # 安装依赖
-          pip install -r worker/requirements.txt
-          ```
-
-      _(如果 `worker/requirements.txt` 不存在, 可通过 `pip install -e worker` 或手动安装 `pyproject.toml` 中的依赖)_
-      ````
-
-4.  **配置环境变量**
-    复制 `.env.example` 文件为 `.env`，并根据你的环境填写必要信息。
+    首先，复制环境变量文件：
 
     ```bash
     cp .env.example .env
     ```
 
-    - 你至少需要填写 `NUXT_PUBLIC_MAPTILER_KEY`。可以从 [MapTiler](https://www.maptiler.com/cloud/) 获取免费的 API Key。
-    - `STORAGE_ROOT` 是存放瓦片文件的本地路径，请确保该目录存在且有写入权限。
+    然后，编辑 `.env` 文件，填入你的配置。以下是各变量的说明：
 
-5.  **数据库迁移**
-    运行 Drizzle Kit 来初始化数据库 schema。
+    ```ini
+    # 数据库连接字符串 (用于 Drizzle 和 Nitro)
+    NUXT_DB_URL="postgresql://user:password@localhost:5432/geoscraper_db"
+
+    # Redis 配置
+    NUXT_REDIS_HOST="localhost"
+    NUXT_REDIS_PASSWORD=""
+    NUXT_REDIS_DB="3"
+
+    # 瓦片下载代理 (可选, 例如 "http://127.0.0.1:7890")
+    NUXT_PROXY_URL=""
+
+    # 瓦片文件存储在宿主机上的根目录 (绝对路径或相对路径)
+    NUXT_STORAGE_ROOT="./geoscraper_tiles"
+
+    # 【前端必需】MapTiler API Key (用于地图选择器背景图)
+    # 前往 https://www.maptiler.com/ 免费注册获取
+    NUXT_PUBLIC_MAPTILER_KEY="YOUR_MAPTILER_KEY"
+
+    # 【前端必需】本地瓦片服务地址 (用于地图查看器)
+    # 如果使用 Docker 部署，需要是外部可访问的地址
+    NUXT_PUBLIC_GIS_SERVER_URL="http://localhost:8080"
+    ```
+
+    > **注意**: `NUXT_PUBLIC_GIS_SERVER_URL` 需要指向一个能提供瓦片文件的静态文件服务器。你可以使用 Nginx 或 `npx serve` 等工具来托管 `NUXT_STORAGE_ROOT` 目录。
+
+### 3. 数据库迁移
+
+在首次启动或数据库 `schema.ts` 发生变化后，需要运行数据库迁移。
+
+1.  **生成迁移文件**:
+    ```bash
+    pnpm db:generate
+    ```
+2.  **应用迁移**:
     ```bash
     pnpm db:migrate
     ```
 
-### 3. 启动应用
-
-你需要同时启动 Nuxt 应用和 Python Worker。
-
-- **启动 Nuxt 应用 (前端 + 后端 API)**:
-
-  ```bash
-  pnpm dev
-  ```
-
-  应用将在 `http://localhost:3000` 上可用。
-
-- **启动 Python Worker** (在新的终端窗口中):
-
-  ```bash
-  # 如果使用了虚拟环境，请确保已激活
-  # source .venv/bin/activate
-
-  pnpm worker:start
-  ```
-
-现在，你可以访问 `http://localhost:3000` 并开始使用 GeoScraper 了！
-
-## ⚙️ 环境变量
-
-在项目根目录的 `.env` 文件中配置以下变量：
-
-```ini
-# .env.example
-
-# PostgreSQL 数据库连接 URL (Drizzle 和 Worker 共用)
-# 默认 docker-compose 配置的用户/密码/数据库名是 geoscraper
-NUXT_DB_URL="postgresql://geoscraper:geoscraper@localhost:5432/geoscraper"
-
-# Redis 连接配置 (Nuxt 和 Worker 共用)
-NUXT_REDIS_HOST="localhost"
-NUXT_REDIS_PASSWORD=""
-NUXT_REDIS_DB="3"
-
-# MapTiler API Key (前端 MapSelector 组件需要)
-NUXT_PUBLIC_MAPTILER_KEY="YOUR_MAPTILER_API_KEY"
-
-# Worker 配置: 瓦片存储的根目录
-STORAGE_ROOT="/data/geoscraper-tiles"
-```
-
-## 📜 可用脚本
-
-- `pnpm dev` - 启动 Nuxt 开发服务器。
-- `pnpm build` - 构建生产环境的 Nuxt 应用。
-- `pnpm start` - 在生产模式下启动 Nuxt 服务器 (需要先 build)。
-- `pnpm db:generate` - 根据 `schema.ts` 生成数据库迁移文件。
-- `pnpm db:migrate` - 应用数据库迁移。
-- `pnpm worker:start` - 启动 Python 后台工作进程。
-- `pnpm lint` - 代码风格检查与格式化。
-
-## 🐳 Docker 部署
-
-项目包含一个用于 Nuxt 应用的 `Dockerfile`。你可以构建镜像并运行容器：
+### 4. 启动开发服务器
 
 ```bash
-# 1. 构建 Nuxt 应用镜像
-docker build -t geoscraper-app .
-
-# 2. 运行应用容器 (需要连接到外部的 DB 和 Redis)
-docker run -p 3000:3000 \
-  --name geoscraper-app-container \
-  -e NUXT_DB_URL="<your_db_url>" \
-  -e NUXT_REDIS_HOST="<your_redis_host>" \
-  -e NUXT_PUBLIC_MAPTILER_KEY="<your_maptiler_key>" \
-  geoscraper-app
+pnpm dev
 ```
 
-**注意**: 在生产环境中，推荐使用 Docker Compose 统一编排 Nuxt 应用、Python Worker、PostgreSQL 和 Redis 容器。
+应用将在 `http://localhost:3000` 上运行。
 
-## 🤝 贡献
+## 📦 使用 Docker Compose 一键启动
 
-欢迎提交 PRs 和 issues！在提交代码前，请确保运行 `pnpm lint` 以保证代码风格一致。
+为了简化开发环境的搭建，项目提供了 `docker-compose.yml` 文件，可以一键启动所有必需的服务（PostgreSQL, Redis, Nginx）。
 
-## 📄 许可证
+1.  **确保 `.env` 文件已配置好**，特别是 `NUXT_PUBLIC_MAPTILER_KEY`。`docker-compose.yml` 会自动读取 `.env` 文件。
 
-[MIT](./LICENSE) License © 2024 [lanseria](https://github.com/lanseria)
+2.  **构建并启动所有服务**:
+
+    ```bash
+    docker-compose up --build -d
+    ```
+
+3.  **访问应用**:
+    - **GeoScraper 应用**: `http://localhost:3000`
+    - **本地瓦片服务 (Nginx)**: `http://localhost:8080`
+
+4.  **查看日志**:
+
+    ```bash
+    docker-compose logs -f
+    ```
+
+5.  **停止并移除容器**:
+    ```bash
+    docker-compose down
+    ```
+
+## 🛠️ 可用脚本
+
+- `pnpm dev`: 启动 Nuxt 开发服务器。
+- `pnpm build`: 为生产环境构建应用。
+- `pnpm start`: 启动生产环境服务器（需先执行 `build`）。
+- `pnpm lint`: 检查代码风格和格式。
+- `pnpm typecheck`: 进行 TypeScript 类型检查。
+- `pnpm db:generate`: 根据 `schema.ts` 生成 Drizzle 迁移文件。
+- `pnpm db:migrate`: 将迁移应用到数据库。
+
+## 🏗️ 项目架构
+
+- `app/`: 包含所有前端 Vue 组件、页面、Pinia stores、静态资源和工具函数。
+- `server/`: 包含所有后端 Nitro API 路由、数据库 schema 和业务逻辑。
+  - `database/`: Drizzle ORM 的 schema 和迁移文件。
+  - `routes/api/`: RESTful API 端点定义。
+  - `utils/`: 后端核心业务逻辑，如任务执行器 (`task-runner.ts`)、文件校验器 (`task-verifier.ts`) 等。
+- `uno.config.ts`: UnoCSS 配置文件，定义了原子化 CSS 的快捷方式和规则。
+- `nuxt.config.ts`: Nuxt 3 核心配置文件，管理模块、运行时配置等。
+- `Dockerfile`: 用于构建生产环境的 Docker 镜像，采用了多阶段构建。
+- `docker-compose.yml`: 用于编排开发和生产环境所需的所有服务。
+
+### 实时通信流程
+
+1.  **前端**: 页面加载后，`useTaskStore` 通过 `EventSource` 连接到后端的 `/api/tasks/sse` 端点。
+2.  **后端 (SSE)**: `sse.get.ts` 为每个客户端建立一个长连接，并订阅 Redis 的 `task-updates` 频道。
+3.  **后端 (任务变更)**: 任何修改任务状态的操作（如创建、更新、进度变化），都会将最新的任务数据发布到 Redis 的 `task-updates` 频道。
+4.  **推送**: Redis 将消息推送给所有订阅者（即所有 SSE 连接），SSE 连接再将数据实时发送给前端。
+5.  **前端 (响应)**: Pinia store 接收到新数据后，自动更新 `tasks` 状态，Vue 的响应式系统会立即将变化渲染到 UI 上。
+
+## 许可证
+
+[MIT](./LICENSE) © 2024 Lanseria
