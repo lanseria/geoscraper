@@ -1,6 +1,6 @@
 // server/database/schema.ts
 import { relations } from 'drizzle-orm'
-import { integer, jsonb, pgEnum, pgSchema, real, serial, text, timestamp, varchar } from 'drizzle-orm/pg-core'
+import { integer, jsonb, pgEnum, pgSchema, real, serial, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core'
 
 export const geoscraperSchema = pgSchema('geoscraper')
 
@@ -33,11 +33,17 @@ export const tasks = geoscraperSchema.table('tasks', {
 
 export const taskTiles = geoscraperSchema.table('task_tiles', {
   id: serial('id').primaryKey(),
-  taskId: integer('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }), // 级联删除
+  taskId: integer('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
   z: integer('z').notNull(),
   x: integer('x').notNull(),
   y: integer('y').notNull(),
-  type: tileTypeEnum('type').notNull(), // 使用枚举类型
+  type: tileTypeEnum('type').notNull(),
+},
+// --- 核心修改 [2]: 添加复合唯一约束 ---
+(table) => {
+  return {
+    uniqueTilePerTask: uniqueIndex('unique_tile_per_task').on(table.taskId, table.z, table.x, table.y),
+  }
 })
 
 // --- 定义两个表之间的关系 ---

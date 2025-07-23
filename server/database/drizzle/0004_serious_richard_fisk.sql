@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "unique_tile_per_task" ON "geoscraper"."task_tiles" USING btree ("task_id","z","x","y");
