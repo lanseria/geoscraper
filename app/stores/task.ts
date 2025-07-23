@@ -3,9 +3,12 @@
 import type { tasks } from '~~/server/database/schema'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 
-export type Task = typeof tasks.$inferSelect
+export type Task = typeof tasks.$inferSelect & {
+  // --- 核心修改: 将这些字段标记为可选 ---
+  missingTileList?: { z: number, x: number, y: number }[]
+  nonExistentTiles?: { z: number, x: number, y: number }[]
+}
 export type TaskCreatePayload = any
-// --- 新增 ---
 export type TaskUpdatePayload = Pick<Task, 'name' | 'description'>
 
 export const useTaskStore = defineStore('task', () => {

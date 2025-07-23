@@ -22,6 +22,13 @@
       "when": 1753154264939,
       "tag": "0002_familiar_wendell_rand",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1753233681781,
+      "tag": "0003_known_sprite",
+      "breakpoints": true
     }
   ]
 }

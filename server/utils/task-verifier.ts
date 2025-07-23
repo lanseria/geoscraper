@@ -2,8 +2,8 @@
 /* eslint-disable no-console */
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import { eq } from 'drizzle-orm'
-import { tasks as tasksSchema } from '~~/server/database/schema'
+import { and, eq } from 'drizzle-orm'
+import { tasks as tasksSchema, taskTiles } from '~~/server/database/schema'
 import { calculateAllTiles } from '~~/server/utils/tile'
 import { downloadTile } from './downloader'
 
@@ -43,8 +43,11 @@ export async function executeVerificationTask(taskId: number) {
     if (!task)
       throw new Error('Task not found')
 
-    // --- 核心修改 1: 创建一个 Set 用于快速查找被标记为不存在的瓦片 ---
-    const nonExistentSet = new Set((task.nonExistentTiles || []).map(t => `${t.z}-${t.x}-${t.y}`))
+    const nonExistentTilesResult = await db.select().from(taskTiles).where(and(eq(taskTiles.taskId, taskId), eq(taskTiles.type, 'non-existent')))
+    const nonExistentSet = new Set(nonExistentTilesResult.map(t => `${t.z}-${t.x}-${t.y}`))
+
+    // --- 核心修改 [2]: 在开始前，清空该任务之前的所有 "missing" 记录 ---
+    await db.delete(taskTiles).where(and(eq(taskTiles.taskId, taskId), eq(taskTiles.type, 'missing')))
 
     const allTiles = calculateAllTiles(task.bounds, task.zoomLevels)
     const totalTiles = allTiles.length
@@ -113,10 +116,22 @@ export async function executeVerificationTask(taskId: number) {
       }
     }
 
-    // 最终更新，写入缺失的瓦片列表
+    if (missingTileList.length > 0) {
+      await db.insert(taskTiles).values(
+        missingTileList.map(tile => ({
+          taskId,
+          z: tile.z,
+          x: tile.x,
+          y: tile.y,
+          type: 'missing' as const, // 明确类型
+        })),
+      )
+    }
+
+    // 最终更新，不再写入列表，只更新状态
     await updateTaskState(taskId, {
       verificationStatus: 'completed',
-      missingTileList,
+      // missingTileList, // <--- 移除
     })
     console.log(`[Task ${taskId}] Verification complete. Found ${missingTileList.length} missing tiles.`)
   }
@@ -126,23 +141,39 @@ export async function executeVerificationTask(taskId: number) {
   }
 }
 
-// executeRedownloadTask 函数保持不变
+/**
+ * 执行重新下载缺失瓦片的任务
+ */
 export async function executeRedownloadTask(taskId: number) {
   console.log(`[Task ${taskId}] Redownload process started.`)
   const db = useDb()
 
   try {
     const [task] = await db.select().from(tasksSchema).where(eq(tasksSchema.id, taskId))
-    if (!task || !task.missingTileList || task.missingTileList.length === 0) {
+
+    // --- 核心修改 1: 从 task_tiles 表查询需要重新下载的瓦片 ---
+    const tilesToRedownload = await db.select({ z: taskTiles.z, x: taskTiles.x, y: taskTiles.y })
+      .from(taskTiles)
+      .where(and(
+        eq(taskTiles.taskId, taskId),
+        eq(taskTiles.type, 'missing'),
+      ))
+
+    if (!task || tilesToRedownload.length === 0) {
       console.log(`[Task ${taskId}] No missing tiles to redownload.`)
-      await updateTaskState(taskId, { status: 'completed' }) // 确保状态正确
+      // 如果没有需要下载的，确保任务状态是 'completed'
+      await updateTaskState(taskId, {
+        status: 'completed',
+        verificationStatus: 'none',
+        verificationProgress: 0,
+        verifiedTiles: 0,
+        missingTiles: 0,
+      })
       return
     }
 
-    const tilesToRedownload = task.missingTileList
     const totalToRedownload = tilesToRedownload.length
 
-    // --- 新增: 状态追踪变量 ---
     let lastProgress = -1
     let lastCompletedCount = -1
 
@@ -172,14 +203,19 @@ export async function executeRedownloadTask(taskId: number) {
       }
     }
 
-    // 重下载完成后，将任务状态设为 completed，并清空校验状态，以便可以再次校验
+    // --- 核心修改 2: 重新下载完成后，清空 'missing' 类型的瓦片记录 ---
+    await db.delete(taskTiles).where(and(
+      eq(taskTiles.taskId, taskId),
+      eq(taskTiles.type, 'missing'),
+    ))
+
+    // 最终更新任务状态
     await updateTaskState(taskId, {
       status: 'completed',
       verificationStatus: 'none',
       verificationProgress: 0,
       verifiedTiles: 0,
       missingTiles: 0,
-      missingTileList: [],
     })
     console.log(`[Task ${taskId}] Redownload complete.`)
   }
