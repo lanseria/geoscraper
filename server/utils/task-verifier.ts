@@ -43,6 +43,9 @@ export async function executeVerificationTask(taskId: number) {
     if (!task)
       throw new Error('Task not found')
 
+    // --- 核心修改 1: 创建一个 Set 用于快速查找被标记为不存在的瓦片 ---
+    const nonExistentSet = new Set((task.nonExistentTiles || []).map(t => `${t.z}-${t.x}-${t.y}`))
+
     const allTiles = calculateAllTiles(task.bounds, task.zoomLevels)
     const totalTiles = allTiles.length
     if (totalTiles === 0) {
@@ -50,7 +53,6 @@ export async function executeVerificationTask(taskId: number) {
       return
     }
 
-    // --- 新增: 状态追踪变量 ---
     let lastProgress = -1
     let lastVerifiedCount = -1
     let lastMissingCount = -1
@@ -64,6 +66,15 @@ export async function executeVerificationTask(taskId: number) {
     const storageRoot = config.storageRoot || '/data/geoscraper-tiles'
 
     for (const tile of allTiles) {
+      const tileKey = `${tile.z}-${tile.x}-${tile.y}`
+
+      // --- 如果瓦片在 "不存在" 集合中，则跳过文件检查，并将其计为已验证 ---
+      if (nonExistentSet.has(tileKey)) {
+        checkedCount++
+        verifiedCount++ // 将其视为已验证/已处理
+        continue // 直接处理下一个瓦片
+      }
+
       const filePath = path.join(storageRoot, task.mapType, String(tile.z), String(tile.x), `${tile.y}.png`)
       let fileExistsAndIsValid = false
       try {
@@ -79,6 +90,7 @@ export async function executeVerificationTask(taskId: number) {
       }
       if (!fileExistsAndIsValid)
         missingTileList.push(tile)
+
       checkedCount++
       const now = Date.now()
       const isLastTile = checkedCount === totalTiles
@@ -87,7 +99,6 @@ export async function executeVerificationTask(taskId: number) {
         const progress = totalTiles > 0 ? Math.floor((checkedCount / totalTiles) * 100) : 100
         const missingCount = missingTileList.length
 
-        // 只有在进度、已验证数或缺失数发生变化时才更新
         if (progress !== lastProgress || verifiedCount !== lastVerifiedCount || missingCount !== lastMissingCount || isLastTile) {
           lastProgress = progress
           lastVerifiedCount = verifiedCount
@@ -115,9 +126,7 @@ export async function executeVerificationTask(taskId: number) {
   }
 }
 
-/**
- * 执行重新下载缺失瓦片的任务
- */
+// executeRedownloadTask 函数保持不变
 export async function executeRedownloadTask(taskId: number) {
   console.log(`[Task ${taskId}] Redownload process started.`)
   const db = useDb()

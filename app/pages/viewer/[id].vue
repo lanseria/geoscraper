@@ -118,11 +118,15 @@ async function handleSubmitSelection() {
     isSubmitting.value = false
   }
 }
-
 // --- 4. 生命周期与地图初始化 ---
 onMounted(() => {
   watch(task, (newTask) => {
-    if (newTask && mapContainer.value && !map.value) {
+    // 确保有任务数据和 DOM 容器
+    if (!newTask || !mapContainer.value)
+      return
+
+    // --- A. 地图初始化 (只执行一次) ---
+    if (!map.value) {
       const tileUrl = `${config.public.gisServerUrl}/${newTask.mapType}/{z}/{x}/{y}.png`
       const mapStyle: any = {
         version: 8,
@@ -133,7 +137,6 @@ onMounted(() => {
             tiles: [tileUrl],
             tileSize: 256,
             attribution: '© GeoScraper Local Cache',
-            // 明确指定瓦片范围，地图库可以此优化
             bounds: [
               newTask.bounds.sw.lng,
               newTask.bounds.sw.lat,
@@ -165,8 +168,10 @@ onMounted(() => {
 
       map.value.addControl(new NavigationControl({}), 'top-right')
 
-      // 在地图上添加一个十字标记，用于指示 flyTo 的中心点
       map.value.on('load', () => {
+        // 在地图加载后，定义好所有需要的 source 和 layer
+
+        // flyto-marker source 和 layer
         map.value!.addSource('flyto-marker', {
           type: 'geojson',
           data: { type: 'Point', coordinates: [0, 0] },
@@ -175,81 +180,59 @@ onMounted(() => {
           id: 'flyto-marker-layer',
           type: 'symbol',
           source: 'flyto-marker',
-          layout: {
-            'icon-image': 'marker-15', // 使用 maplibre 内置的图标
-            'icon-size': 2,
-            'icon-allow-overlap': true,
-          },
-          paint: {
-            'icon-color': '#ff4d4d',
-          },
+          layout: { 'icon-image': 'marker-15', 'icon-size': 2, 'icon-allow-overlap': true },
+          paint: { 'icon-color': '#ff4d4d' },
         })
 
-        // --- 新增: 缺失瓦片的可视化图层 ---
-        // 1. 添加 GeoJSON 源
+        // missing-tiles-source 和 layers
         map.value!.addSource('missing-tiles-source', {
           type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: [], // 初始为空
-          },
+          data: { type: 'FeatureCollection', features: [] }, // 初始为空
         })
-
-        // 2. 添加填充图层 (半透明红色)
         map.value!.addLayer({
           id: 'missing-tiles-fill',
           type: 'fill',
           source: 'missing-tiles-source',
-          paint: {
-            'fill-color': '#ff4d4d', // 红色
-            'fill-opacity': 0.3,
-          },
+          paint: { 'fill-color': '#ff4d4d', 'fill-opacity': 0.3 },
         })
-
-        // 3. 添加边框图层
         map.value!.addLayer({
           id: 'missing-tiles-outline',
           type: 'line',
           source: 'missing-tiles-source',
-          paint: {
-            'line-color': '#ff4d4d',
-            'line-width': 1,
-          },
+          paint: { 'line-color': '#ff4d4d', 'line-width': 1 },
         })
-
-        // 4. 添加文本标签图层 (显示 Zoom 级别)
         map.value!.addLayer({
           id: 'missing-tiles-label',
           type: 'symbol',
           source: 'missing-tiles-source',
-          layout: {
-            'text-field': ['get', 'zoom'], // 从 feature.properties.zoom 获取文本
-            'text-size': 14,
-            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-            'text-allow-overlap': true, // 允许标签重叠，以显示更多信息
-          },
-          paint: {
-            'text-color': '#ffffff',
-            'text-halo-color': '#000000',
-            'text-halo-width': 1,
-          },
+          layout: { 'text-field': ['get', 'zoom'], 'text-size': 14, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true },
+          paint: { 'text-color': '#ffffff', 'text-halo-color': '#000000', 'text-halo-width': 1 },
         })
 
-        // 地图加载后，如果已有 task 数据，立即更新 GeoJSON 源
-        if (newTask.missingTileList && newTask.missingTileList.length > 0) {
-          const geojsonData = tilesToGeoJSON(newTask.missingTileList)
-          const source = map.value!.getSource('missing-tiles-source') as any
-          if (source)
-            source.setData(geojsonData)
-        }
+        // --- 核心修改点 1: 在 load 事件中，为首次加载填充数据 ---
+        // 这样可以确保地图一出来就显示正确的缺失瓦片
+        const source = map.value!.getSource('missing-tiles-source') as any
+        const geojsonData = tilesToGeoJSON(newTask.missingTileList || [])
+        if (source)
+          source.setData(geojsonData)
       })
 
-      // 当 flyTo 动画结束时，更新标记位置
       map.value.on('moveend', () => {
         const center = map.value!.getCenter()
         const source = map.value!.getSource('flyto-marker') as any
         source.setData({ type: 'Point', coordinates: [center.lng, center.lat] })
       })
+    }
+
+    // --- B. 地图数据更新 (每次 task 变化时都执行) ---
+    // 核心修改点 2: 将更新逻辑放在 watch 的主干上
+    // 确保地图已加载完成且 source 已存在
+    if (map.value && map.value.isStyleLoaded()) {
+      const source = map.value.getSource('missing-tiles-source') as any
+      const geojsonData = tilesToGeoJSON(newTask.missingTileList || [])
+      // 检查 source 是否存在，以防万一
+      if (source)
+        source.setData(geojsonData)
     }
   }, { immediate: true })
 })
