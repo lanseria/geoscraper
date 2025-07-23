@@ -4,6 +4,7 @@
 
 ![GeoScraper 仪表盘](screenshots/geoscraper-dashboard.png)
 ![GeoScraper 任务创建](screenshots/geoscraper-create.png)
+![GeoScraper 地图查看器](screenshots/geoscraper-viewer.png)
 
 ## ✨ 核心功能
 
